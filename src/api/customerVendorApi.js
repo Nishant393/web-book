@@ -26,8 +26,8 @@ function apiPath(path) {
 function getAuthToken() {
   try {
     return (
-      localStorage.getItem("crm_token") ||
-      sessionStorage.getItem("crm_token") ||
+      localStorage.getItem("book_token") ||
+      sessionStorage.getItem("book_token") ||
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
       localStorage.getItem("accessToken") ||
@@ -263,4 +263,60 @@ export const purchaseOrderApi = {
 
   delete: (orderId) =>
     customerVendorAxios.delete(apiPath(`/api/purchase-orders/${orderId}`)).then(unwrap),
+};
+
+export const invoiceApi = {
+  list: (params = {}) =>
+    customerVendorAxios.get(apiPath("/api/invoices"), { params }).then(unwrap),
+
+  listAll: (params = {}) => listAll("/api/invoices", params),
+
+  create: (payload) =>
+    customerVendorAxios.post(apiPath("/api/invoices"), payload).then(unwrap),
+
+  getById: (invoiceId) =>
+    customerVendorAxios.get(apiPath(`/api/invoices/${invoiceId}`)).then(unwrap),
+
+  update: (invoiceId, payload) =>
+    customerVendorAxios.patch(apiPath(`/api/invoices/${invoiceId}`), payload).then(unwrap),
+
+  delete: (invoiceId) =>
+    customerVendorAxios.delete(apiPath(`/api/invoices/${invoiceId}`)).then(unwrap),
+};
+
+export const billApi = {
+  list: (params = {}) =>
+    customerVendorAxios.get(apiPath("/api/bills"), { params }).then(unwrap),
+
+  listAll: (params = {}) => listAll("/api/bills", params),
+
+  create: (payload) =>
+    customerVendorAxios.post(apiPath("/api/bills"), payload).then(unwrap),
+
+  getById: (billId) =>
+    customerVendorAxios.get(apiPath(`/api/bills/${billId}`)).then(unwrap),
+
+  update: (billId, payload) =>
+    customerVendorAxios.patch(apiPath(`/api/bills/${billId}`), payload).then(unwrap),
+
+  delete: (billId) =>
+    customerVendorAxios.delete(apiPath(`/api/bills/${billId}`)).then(unwrap),
+};
+const SEND_MEDIA_URL =
+  normalizeBaseUrl(import.meta.env.VITE_SEND_MEDIA_URL) ||
+  "https://dev.esmbackend.click/api/message/api/v1/support/send-media";
+
+export const sendMediaApi = {
+  send: (formData) => {
+    const token = getAuthToken();
+
+    return axios
+      .post(SEND_MEDIA_URL, formData, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "Content-Type": "multipart/form-data",
+        },
+      })
+      .then(unwrap);
+  },
 };

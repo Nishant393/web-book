@@ -13,6 +13,7 @@ import VendorDetailPage from "./pages/VendorDetailPage";
 import ZohoFormPage from "./pages/ZohoFormPage";
 import SimpleModulePage from "./pages/SimpleModulePage";
 import RequireAuth from "./auth/RequireAuth";
+import SendEmailPage from "./pages/SendEmailPage";
 
 function Protected({ children }) {
   return <RequireAuth>{children}</RequireAuth>;
@@ -51,7 +52,7 @@ export default function App() {
           <Route path="/expenses/new" element={<Protected><ZohoFormPage mode="expense" /></Protected>} />
           <Route path="/reports" element={<Protected><SimpleModulePage title="Reports" button="Create Report" /></Protected>} />
           <Route path="/documents" element={<Protected><SimpleModulePage title="Documents" button="Upload Document" /></Protected>} />
-
+<Route path="/send-email" element={<SendEmailPage />} />
           <Route path="/statements" element={<Navigate to="/banks" replace />} />
           <Route path="/bank-statements" element={<Navigate to="/banks" replace />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

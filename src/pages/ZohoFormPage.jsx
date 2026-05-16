@@ -2,10 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
-  Checkbox,
   CircularProgress,
   Divider,
-  FormControlLabel,
   Grid,
   IconButton,
   MenuItem,
@@ -32,12 +30,15 @@ import {
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
+
 import AppShell from "../components/AppShell";
 import Button from "../components/Button";
 import ConfirmationDialog from "../components/ConfirmationDialog";
 import ZohoPage from "../components/ZohoPage";
 import {
+  billApi,
   customerApi,
+  invoiceApi,
   purchaseOrderApi,
   salesOrderApi,
   vendorApi,
@@ -52,7 +53,7 @@ const CONFIG = {
     party: "Customer Name",
     partyPlaceholder: "Select or add a customer",
     no: "Sales Order#",
-    noValue: "SO-00001",
+    noValue: "",
     date: "Sales Order Date",
     shipment: "Expected Shipment Date",
     primary: "Save and Send",
@@ -86,7 +87,7 @@ const CONFIG = {
     party: "Vendor Name",
     partyPlaceholder: "Select or add a vendor",
     no: "Purchase Order#",
-    noValue: "PO-00001",
+    noValue: "",
     date: "Purchase Order Date",
     shipment: "Expected Shipment Date",
     primary: "Save and Send",
@@ -153,8 +154,10 @@ const num = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const grossItemAmount = (row) => Math.max(0, num(row.quantity) * num(row.rate));
+
 const itemAmount = (row) =>
-  Math.max(0, num(row.quantity) * num(row.rate) - num(row.discount));
+  Math.max(0, grossItemAmount(row) - num(row.discount));
 
 const getId = (row) =>
   row?._id ||
@@ -475,14 +478,79 @@ function PartySelect({
   );
 }
 
+const apiOrderStatusFromUiStatus = (status) => {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (value === "draft") return "DRAFT";
+  if (value === "cancelled" || value === "canceled") return "CANCELLED";
+
+  return "CONFIRMED";
+};
+
+const apiInvoiceStatusFromUiStatus = (status) => {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (value === "draft") return "DRAFT";
+  if (value === "paid") return "PAID";
+  if (value === "partially_paid" || value === "partial") return "PARTIALLY_PAID";
+  if (value === "cancelled" || value === "canceled") return "CANCELLED";
+
+  return "SENT";
+};
+
+const apiBillStatusFromUiStatus = (status) => {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (value === "draft") return "DRAFT";
+  if (value === "paid") return "PAID";
+  if (value === "partially_paid" || value === "partial") return "PARTIALLY_PAID";
+  if (value === "cancelled" || value === "canceled") return "CANCELLED";
+
+  return "OPEN";
+};
+
+const SENDABLE_MODES = new Set([
+  "sales-order",
+  "purchase-order",
+  "invoice",
+  "bill",
+]);
+
+const pickCreatedDocument = (response, mode) => {
+  const data = pickData(response);
+
+  if (mode === "sales-order") return data.order || data.salesOrder || data;
+  if (mode === "purchase-order") return data.order || data.purchaseOrder || data;
+  if (mode === "invoice") return data.invoice || data;
+  if (mode === "bill") return data.bill || data;
+
+  return data;
+};
+
+const getCreatedDocumentId = (doc) => doc?._id || doc?.id || "";
+
+const buildSendEmailCacheKey = (mode, id) => `moneyiq_send_${mode}_${id}`;
+
+const titleForSendMode = (mode) => {
+  if (mode === "sales-order") return "SALES ORDER";
+  if (mode === "purchase-order") return "PURCHASE ORDER";
+  if (mode === "invoice") return "TAX INVOICE";
+  if (mode === "bill") return "BILL";
+
+  return "DOCUMENT";
+};
+
 export default function ZohoFormPage({ mode = "sales-order" }) {
   const cfg = CONFIG[mode] || CONFIG["sales-order"];
   const navigate = useNavigate();
-const [saving, setSaving] = useState(false);
+
+  const [saving, setSaving] = useState(false);
   const [discard, setDiscard] = useState(false);
+
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [partyLoading, setPartyLoading] = useState(false);
+
   const [form, setForm] = useState({
     party: "",
     partyName: "",
@@ -498,6 +566,9 @@ const [saving, setSaving] = useState(false);
     subject: "",
     reportingTags: "",
     notes: "",
+    gstPercent: "0",
+    taxMode: "TDS",
+    taxPercent: "0",
     adjustment: "0",
   });
 
@@ -505,7 +576,13 @@ const [saving, setSaving] = useState(false);
 
   const isPurchase = mode === "purchase-order" || mode === "bill";
   const isInvoiceLike = mode === "invoice" || mode === "bill";
-  const needsPartyList = ["sales-order", "invoice", "purchase-order", "bill"].includes(mode);
+
+  const needsPartyList = [
+    "sales-order",
+    "invoice",
+    "purchase-order",
+    "bill",
+  ].includes(mode);
 
   const patch = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -560,6 +637,10 @@ const [saving, setSaving] = useState(false);
       number: cfg.noValue,
       party: "",
       partyName: "",
+      gstPercent: "0",
+      taxMode: "TDS",
+      taxPercent: "0",
+      adjustment: "0",
     }));
   }, [cfg.noValue, mode]);
 
@@ -581,9 +662,40 @@ const [saving, setSaving] = useState(false);
     );
   }, [form.party, isPurchase, partyOptions]);
 
-  const subtotal = useMemo(
-    () => items.reduce((sum, row) => sum + itemAmount(row), 0),
+  const grossSubtotal = useMemo(
+    () => items.reduce((sum, row) => sum + grossItemAmount(row), 0),
     [items]
+  );
+
+  const totalDiscount = useMemo(
+    () => items.reduce((sum, row) => sum + num(row.discount), 0),
+    [items]
+  );
+
+  const taxableAmount = useMemo(
+    () => Math.max(grossSubtotal - totalDiscount, 0),
+    [grossSubtotal, totalDiscount]
+  );
+
+  const gstAmount = useMemo(
+    () => (taxableAmount * num(form.gstPercent)) / 100,
+    [form.gstPercent, taxableAmount]
+  );
+
+  const tdsAmount = useMemo(
+    () =>
+      form.taxMode === "TDS"
+        ? (taxableAmount * num(form.taxPercent)) / 100
+        : 0,
+    [form.taxMode, form.taxPercent, taxableAmount]
+  );
+
+  const tcsAmount = useMemo(
+    () =>
+      form.taxMode === "TCS"
+        ? (taxableAmount * num(form.taxPercent)) / 100
+        : 0,
+    [form.taxMode, form.taxPercent, taxableAmount]
   );
 
   const totalQty = useMemo(
@@ -591,137 +703,236 @@ const [saving, setSaving] = useState(false);
     [items]
   );
 
-  const totalAmount = subtotal + num(form.adjustment);
-  const totalDiscount = useMemo(
-  () => items.reduce((sum, row) => sum + num(row.discount), 0),
-  [items]
-);
-
-const apiStatusFromUiStatus = (status) => {
-  const value = String(status || "").trim().toLowerCase();
-
-  if (value === "draft") return "DRAFT";
-  if (value === "cancelled" || value === "canceled") return "CANCELLED";
-
-  return "CONFIRMED";
-};
-
-const buildOrderApiPayload = (payload) => ({
-  referenceNumber: payload.reference,
-  orderDate: payload.date,
-  expectedShipmentDate: payload.shipment || null,
-  paymentTerms: payload.paymentTerms,
-  salesperson: payload.salesperson,
-  subject: payload.subject,
-  description: payload.notes,
-  amount: payload.baseAmount,
-  gstAmount: payload.gstAmount,
-  totalAmount: payload.totalAmount,
-  status: apiStatusFromUiStatus(payload.status),
-  remarks: payload.notes,
-});
-
-const persistDocument = async (payload) => {
-  if (mode === "sales-order") {
-    return salesOrderApi.create({
-      ...buildOrderApiPayload(payload),
-      customerId: payload.partyId,
-    });
-  }
-
-  if (mode === "purchase-order") {
-    return purchaseOrderApi.create({
-      ...buildOrderApiPayload(payload),
-      vendorId: payload.partyId,
-    });
-  }
-
-  return saveDocument(payload);
-};
-
-const buildSavePayload = (status) => {
-  return {
-    module: cfg.module,
-    mode,
-
-    number: mode === "sales-order" || mode === "purchase-order" ? "" : form.number,
-    reference: form.reference,
-
-    partyId: form.party,
-    party: form.partyName,
-    partyName: form.partyName,
-
-    date: form.date,
-    due: form.dueDate,
-    shipment: form.expectedShipmentDate,
-
-    paymentTerms: form.paymentTerms,
-    deliveryMethod: form.deliveryMethod,
-    salesperson: form.salesperson,
-    subject: form.subject,
-    reportingTags: form.reportingTags,
-    notes: form.notes,
-
-    baseAmount: subtotal,
-    subTotal: subtotal,
-    discountAmount: totalDiscount,
-    gstAmount: num(form.gstAmount),
-    tdsAmount: num(form.tdsAmount),
-    adjustment: num(form.adjustment),
-    amount: totalAmount,
-    totalAmount,
-
-    totalQty,
-
-    items: items.map((item) => ({
-      itemDetails: item.itemDetails,
-      quantity: num(item.quantity),
-      rate: num(item.rate),
-      discount: num(item.discount),
-      amount: itemAmount(item),
-    })),
-
-    status,
-  };
-};
-
-const handleSave = async (status = "Saved") => {
-  if (needsPartyList && !form.party) {
-    toast.error(`${cfg.party} is required`);
-    return;
-  }
-
-  if (!form.date) {
-    toast.error(`${cfg.date} is required`);
-    return;
-  }
-
-  const hasValidItem = items.some(
-    (item) => item.itemDetails || num(item.quantity) > 0 || num(item.rate) > 0
+  const totalAmount = useMemo(
+    () =>
+      taxableAmount +
+      gstAmount +
+      tcsAmount -
+      tdsAmount +
+      num(form.adjustment),
+    [form.adjustment, gstAmount, taxableAmount, tcsAmount, tdsAmount]
   );
 
-  if (!hasValidItem) {
-    toast.error("At least one item is required");
-    return;
-  }
+  const buildCommonApiPayload = (payload) => ({
+    referenceNumber: payload.reference,
+    paymentTerms: payload.paymentTerms,
+    salesperson: payload.salesperson,
+    subject: payload.subject,
+    description: payload.notes,
 
-  setSaving(true);
+    amount: payload.grossAmount,
 
-  try {
-    const payload = buildSavePayload(status);
+    discountPercent: payload.discountPercent,
+    discountAmount: payload.discountAmount,
 
-    await persistDocument(payload);
+    gstPercent: payload.gstPercent,
+    gstAmount: payload.gstAmount,
 
-    toast.success(`${cfg.module.slice(0, -1)} saved successfully`);
+    tdsPercent: payload.tdsPercent,
+    tdsAmount: payload.tdsAmount,
 
-    navigate(cfg.listPath);
-  } catch (error) {
-    console.error("SAVE_DOCUMENT_ERROR:", error);
-    toast.error(error?.response?.data?.message || "Failed to save document");
-  } finally {
-    setSaving(false);
-  }
-};
+    tcsPercent: payload.tcsPercent,
+    tcsAmount: payload.tcsAmount,
+
+    adjustmentAmount: payload.adjustmentAmount,
+    totalAmount: payload.totalAmount,
+
+    remarks: payload.notes,
+  });
+
+  const buildOrderApiPayload = (payload) => ({
+    ...buildCommonApiPayload(payload),
+    orderDate: payload.date,
+    expectedShipmentDate: payload.shipment || null,
+    status: apiOrderStatusFromUiStatus(payload.status),
+  });
+
+  const buildInvoiceApiPayload = (payload) => ({
+    ...buildCommonApiPayload(payload),
+    invoiceDate: payload.date,
+    dueDate: payload.due || null,
+    paidAmount: 0,
+    status: apiInvoiceStatusFromUiStatus(payload.status),
+  });
+
+  const buildBillApiPayload = (payload) => ({
+    ...buildCommonApiPayload(payload),
+    billDate: payload.date,
+    dueDate: payload.due || null,
+    paidAmount: 0,
+    status: apiBillStatusFromUiStatus(payload.status),
+  });
+
+  const persistDocument = async (payload) => {
+    if (mode === "sales-order") {
+      return salesOrderApi.create({
+        ...buildOrderApiPayload(payload),
+        customerId: payload.partyId,
+      });
+    }
+
+    if (mode === "purchase-order") {
+      return purchaseOrderApi.create({
+        ...buildOrderApiPayload(payload),
+        vendorId: payload.partyId,
+      });
+    }
+
+    if (mode === "invoice") {
+      return invoiceApi.create({
+        ...buildInvoiceApiPayload(payload),
+        customerId: payload.partyId,
+      });
+    }
+
+    if (mode === "bill") {
+      return billApi.create({
+        ...buildBillApiPayload(payload),
+        vendorId: payload.partyId,
+      });
+    }
+
+    return saveDocument(payload);
+  };
+
+  const buildSavePayload = (status) => {
+    const taxPercent = num(form.taxPercent);
+
+    return {
+      module: cfg.module,
+      mode,
+
+      number:
+        mode === "sales-order" || mode === "purchase-order" ? "" : form.number,
+      reference: form.reference,
+
+      partyId: form.party,
+      party: form.partyName,
+      partyName: form.partyName,
+
+      date: form.date,
+      due: form.dueDate,
+      shipment: form.expectedShipmentDate,
+
+      paymentTerms: form.paymentTerms,
+      deliveryMethod: form.deliveryMethod,
+      salesperson: form.salesperson,
+      subject: form.subject,
+      reportingTags: form.reportingTags,
+      notes: form.notes,
+
+      grossAmount: grossSubtotal,
+      baseAmount: taxableAmount,
+      subTotal: taxableAmount,
+
+      discountPercent:
+        grossSubtotal > 0 ? (totalDiscount / grossSubtotal) * 100 : 0,
+      discountAmount: totalDiscount,
+
+      gstPercent: num(form.gstPercent),
+      gstAmount,
+
+      taxMode: form.taxMode,
+      tdsPercent: form.taxMode === "TDS" ? taxPercent : 0,
+      tdsAmount,
+      tcsPercent: form.taxMode === "TCS" ? taxPercent : 0,
+      tcsAmount,
+
+      adjustment: num(form.adjustment),
+      adjustmentAmount: num(form.adjustment),
+
+      amount: totalAmount,
+      totalAmount,
+
+      totalQty,
+
+      items: items.map((item) => ({
+        itemDetails: item.itemDetails,
+        quantity: num(item.quantity),
+        rate: num(item.rate),
+        discount: num(item.discount),
+        amount: itemAmount(item),
+      })),
+
+      status,
+    };
+  };
+
+  const handleSave = async (status = "Saved", shouldSend = false) => {
+    if (needsPartyList && !form.party) {
+      toast.error(`${cfg.party} is required`);
+      return;
+    }
+
+    if (!form.date) {
+      toast.error(`${cfg.date} is required`);
+      return;
+    }
+
+    const hasValidItem = items.some(
+      (item) =>
+        item.itemDetails || num(item.quantity) > 0 || num(item.rate) > 0
+    );
+
+    if (!hasValidItem) {
+      toast.error("At least one item is required");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const payload = buildSavePayload(status);
+
+      const saveResponse = await persistDocument(payload);
+
+      toast.success(`${cfg.module.slice(0, -1)} saved successfully`);
+
+      if (shouldSend && SENDABLE_MODES.has(mode)) {
+        const createdDocument = pickCreatedDocument(saveResponse, mode);
+        const documentId = getCreatedDocumentId(createdDocument);
+
+        if (!documentId) {
+          toast.error("Document saved, but document id was not returned");
+          navigate(cfg.listPath);
+          return;
+        }
+
+        const cachePayload = {
+          mode,
+          documentId,
+          documentTitle: titleForSendMode(mode),
+          apiDocument: createdDocument,
+          formPayload: payload,
+          selectedParty,
+          partyEmail: selectedParty?.email || "",
+          partyName: payload.partyName || payload.party || "",
+          items: payload.items || [],
+          createdAt: new Date().toISOString(),
+        };
+
+        sessionStorage.setItem(
+          buildSendEmailCacheKey(mode, documentId),
+          JSON.stringify(cachePayload)
+        );
+
+        navigate(
+          `/send-email?type=${encodeURIComponent(mode)}&id=${encodeURIComponent(
+            documentId
+          )}`
+        );
+
+        return;
+      }
+
+      navigate(cfg.listPath);
+    } catch (error) {
+      console.error("SAVE_DOCUMENT_ERROR:", error);
+      toast.error(error?.response?.data?.message || "Failed to save document");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const onPartyChange = (value) => {
     const match =
@@ -766,7 +977,9 @@ const handleSave = async (status = "Saved") => {
           }}
         >
           <Stack direction="row" spacing={1.2} alignItems="center">
-            <Typography sx={{ fontSize: 24, fontWeight: 400, color: "#111827" }}>
+            <Typography
+              sx={{ fontSize: 24, fontWeight: 400, color: "#111827" }}
+            >
               {cfg.title}
             </Typography>
           </Stack>
@@ -799,7 +1012,12 @@ const handleSave = async (status = "Saved") => {
               width: "100%",
             }}
           >
-            <Grid container spacing={1.6} alignItems="start" sx={{ width: "100%", m: 0 }}>
+            <Grid
+              container
+              spacing={1.6}
+              alignItems="start"
+              sx={{ width: "100%", m: 0 }}
+            >
               <Grid item xs={12} md={2.1}>
                 <ZohoLabel required>{cfg.party}</ZohoLabel>
               </Grid>
@@ -825,14 +1043,20 @@ const handleSave = async (status = "Saved") => {
                     }}
                     onClick={loadParties}
                   >
-                    {partyLoading ? <CircularProgress size={15} /> : <Search size={16} />}
+                    {partyLoading ? (
+                      <CircularProgress size={15} />
+                    ) : (
+                      <Search size={16} />
+                    )}
                   </Button>
                 </Stack>
 
                 {selectedParty ? (
                   <Grid container spacing={1.2} sx={{ mt: 1.2 }}>
                     <Grid item xs={12} md={6}>
-                      <Typography sx={{ fontSize: 11, color: "#667085", mb: 0.3 }}>
+                      <Typography
+                        sx={{ fontSize: 11, color: "#667085", mb: 0.3 }}
+                      >
                         Billing Address
                       </Typography>
                       <Typography sx={{ fontSize: 12.5, color: "#2563eb" }}>
@@ -841,7 +1065,9 @@ const handleSave = async (status = "Saved") => {
                     </Grid>
 
                     <Grid item xs={12} md={6}>
-                      <Typography sx={{ fontSize: 11, color: "#667085", mb: 0.3 }}>
+                      <Typography
+                        sx={{ fontSize: 11, color: "#667085", mb: 0.3 }}
+                      >
                         {isPurchase ? "Delivery Address" : "Shipping Address"}
                       </Typography>
                       <Typography sx={{ fontSize: 12.5, color: "#2563eb" }}>
@@ -860,14 +1086,23 @@ const handleSave = async (status = "Saved") => {
                 label={cfg.date}
                 required
                 rightChildren={
-                  <Grid container spacing={1.6} alignItems="center" sx={{ width: "100%", m: 0 }}>
+                  <Grid
+                    container
+                    spacing={1.6}
+                    alignItems="center"
+                    sx={{ width: "100%", m: 0 }}
+                  >
                     <Grid item xs={12} md={3.2}>
                       <ZohoLabel>{isInvoiceLike ? cfg.due : cfg.shipment}</ZohoLabel>
                     </Grid>
 
                     <Grid item xs={12} md={5.4}>
                       <DateInput
-                        value={isInvoiceLike ? form.dueDate : form.expectedShipmentDate}
+                        value={
+                          isInvoiceLike
+                            ? form.dueDate
+                            : form.expectedShipmentDate
+                        }
                         onChange={(v) =>
                           patch(
                             isInvoiceLike ? "dueDate" : "expectedShipmentDate",
@@ -881,8 +1116,6 @@ const handleSave = async (status = "Saved") => {
               >
                 <DateInput value={form.date} onChange={(v) => patch("date", v)} />
               </FormLine>
-
-         
 
               <Divider sx={{ my: 0.6 }} />
 
@@ -917,7 +1150,9 @@ const handleSave = async (status = "Saved") => {
                   borderBottom: "1px solid #e3e7ef",
                 }}
               >
-                <Typography sx={{ fontSize: 15, fontWeight: 500, color: "#111827" }}>
+                <Typography
+                  sx={{ fontSize: 15, fontWeight: 500, color: "#111827" }}
+                >
                   Item Table
                 </Typography>
               </Stack>
@@ -954,7 +1189,9 @@ const handleSave = async (status = "Saved") => {
                         <TableCell>
                           <ZohoTextField
                             value={item.itemDetails}
-                            onChange={(v) => updateItem(item.id, "itemDetails", v)}
+                            onChange={(v) =>
+                              updateItem(item.id, "itemDetails", v)
+                            }
                             placeholder="Type or click to select an item"
                           />
                         </TableCell>
@@ -981,13 +1218,22 @@ const handleSave = async (status = "Saved") => {
                         </TableCell>
 
                         <TableCell align="right">
-                          <Typography sx={{ fontSize: 13, color: "#111827", fontWeight: 500 }}>
+                          <Typography
+                            sx={{
+                              fontSize: 13,
+                              color: "#111827",
+                              fontWeight: 500,
+                            }}
+                          >
                             {money(itemAmount(item))}
                           </Typography>
                         </TableCell>
 
                         <TableCell align="center">
-                          <IconButton size="small" onClick={() => removeItem(item.id)}>
+                          <IconButton
+                            size="small"
+                            onClick={() => removeItem(item.id)}
+                          >
                             <Trash2 size={16} />
                           </IconButton>
                         </TableCell>
@@ -1008,11 +1254,14 @@ const handleSave = async (status = "Saved") => {
               </Box>
             </Paper>
 
-            <Grid container spacing={2.5} sx={{ mt: 1.5, width: "100%", m: 0 }} alignItems="flex-start">
+            <Grid
+              container
+              spacing={2.5}
+              sx={{ mt: 1.5, width: "100%", m: 0 }}
+              alignItems="flex-start"
+            >
               <Grid item xs={12} md={7}>
                 <Stack spacing={1.6}>
-               
-
                   <FormLine label={cfg.notesLabel}>
                     <ZohoTextField
                       multiline
@@ -1022,15 +1271,6 @@ const handleSave = async (status = "Saved") => {
                       placeholder={cfg.notesPlaceholder}
                     />
                   </FormLine>
-
-                  <FormControlLabel
-                    control={<Checkbox size="small" />}
-                    label="Email this transaction to the party after saving"
-                    sx={{
-                      ml: { md: "calc(17.5% - 11px)" },
-                      "& .MuiFormControlLabel-label": { fontSize: 13 },
-                    }}
-                  />
                 </Stack>
               </Grid>
 
@@ -1049,12 +1289,106 @@ const handleSave = async (status = "Saved") => {
                       <Typography sx={{ fontSize: 13, color: "#667085" }}>
                         Sub Total
                       </Typography>
-                      <Typography sx={{ fontSize: 13, color: "#111827", fontWeight: 500 }}>
-                        {money(subtotal)}
+                      <Typography
+                        sx={{ fontSize: 13, color: "#111827", fontWeight: 500 }}
+                      >
+                        {money(taxableAmount)}
                       </Typography>
                     </Stack>
 
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography sx={{ fontSize: 13, color: "#667085" }}>
+                        Discount
+                      </Typography>
+                      <Typography sx={{ fontSize: 13, color: "#667085" }}>
+                        - {money(totalDiscount)}
+                      </Typography>
+                    </Stack>
+
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      spacing={2}
+                    >
+                      <Typography sx={{ fontSize: 13, color: "#667085" }}>
+                        GST %
+                      </Typography>
+
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        sx={{ width: 230 }}
+                      >
+                        <Box sx={{ width: 90 }}>
+                          <ZohoTextField
+                            value={form.gstPercent}
+                            onChange={(v) => patch("gstPercent", v)}
+                          />
+                        </Box>
+                        <Typography
+                          sx={{
+                            fontSize: 13,
+                            color: "#111827",
+                            minWidth: 105,
+                            textAlign: "right",
+                          }}
+                        >
+                          {money(gstAmount)}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      spacing={2}
+                    >
+                      <Box sx={{ width: 92 }}>
+                        <ZohoSelect
+                          value={form.taxMode}
+                          onChange={(v) => patch("taxMode", v)}
+                        >
+                          <MenuItem value="TDS">TDS</MenuItem>
+                          <MenuItem value="TCS">TCS</MenuItem>
+                        </ZohoSelect>
+                      </Box>
+
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        sx={{ width: 230 }}
+                      >
+                        <Box sx={{ width: 90 }}>
+                          <ZohoTextField
+                            value={form.taxPercent}
+                            onChange={(v) => patch("taxPercent", v)}
+                            placeholder="Tax %"
+                          />
+                        </Box>
+                        <Typography
+                          sx={{
+                            fontSize: 13,
+                            color: "#111827",
+                            minWidth: 105,
+                            textAlign: "right",
+                          }}
+                        >
+                          {form.taxMode === "TDS" ? "- " : "+ "}
+                          {money(form.taxMode === "TDS" ? tdsAmount : tcsAmount)}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      spacing={2}
+                    >
                       <Typography sx={{ fontSize: 13, color: "#667085" }}>
                         Adjustment
                       </Typography>
@@ -1070,11 +1404,15 @@ const handleSave = async (status = "Saved") => {
                     <Divider />
 
                     <Stack direction="row" justifyContent="space-between">
-                      <Typography sx={{ fontSize: 15, color: "#111827", fontWeight: 600 }}>
+                      <Typography
+                        sx={{ fontSize: 15, color: "#111827", fontWeight: 600 }}
+                      >
                         Total
                       </Typography>
 
-                      <Typography sx={{ fontSize: 15, color: "#111827", fontWeight: 700 }}>
+                      <Typography
+                        sx={{ fontSize: 15, color: "#111827", fontWeight: 700 }}
+                      >
                         {money(totalAmount)}
                       </Typography>
                     </Stack>
@@ -1100,30 +1438,27 @@ const handleSave = async (status = "Saved") => {
             boxShadow: "0 -2px 10px rgba(15,23,42,0.05)",
           }}
         >
-         <Stack direction="row" spacing={1}>
-  <Button
-    disabled={saving}
-    onClick={() => handleSave(cfg.primary === "Save and Send" ? "Sent" : "Saved")}
-  >
-    {saving ? "Saving..." : cfg.primary}
-  </Button>
+          <Stack direction="row" spacing={1}>
+            <Button disabled={saving} onClick={() => handleSave("Saved", false)}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
 
-  <Button
-    variant="outline"
-    disabled={saving}
-    onClick={() => handleSave("Draft")}
-  >
-    {cfg.draft}
-  </Button>
+            <Button
+              variant="outline"
+              disabled={saving}
+              onClick={() => handleSave("Sent", true)}
+            >
+              Save and Send
+            </Button>
 
-  <Button
-    variant="outline"
-    disabled={saving}
-    onClick={() => setDiscard(true)}
-  >
-    Cancel
-  </Button>
-</Stack>
+            <Button
+              variant="outline"
+              disabled={saving}
+              onClick={() => setDiscard(true)}
+            >
+              Cancel
+            </Button>
+          </Stack>
 
           <Typography sx={{ fontSize: 13, textAlign: "right" }}>
             Total Amount: <b>{money(totalAmount)}</b>

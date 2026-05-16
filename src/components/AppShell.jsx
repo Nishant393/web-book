@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import sanyojanLogo from "../assets/sanyojan_Motion.gif";
 import {
   Avatar,
   Box,
@@ -73,42 +74,14 @@ function getInitials(name = "") {
 
 function MoneyIqLogo() {
   return (
-    <Stack direction="row" alignItems="center" spacing={1}>
+    <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
       <Box
-        sx={{
-          width: 28,
-          height: 28,
-          borderRadius: "7px",
-          display: "grid",
-          placeItems: "center",
-          background: "linear-gradient(135deg,#4088ff,#58c46f)",
-          color: "#fff",
-          fontSize: 16,
-          fontWeight: 800,
-        }}
-      >
-        ₹
-      </Box>
-
-      <Box sx={{ lineHeight: 1 }}>
-        <Typography sx={{ fontSize: 18, fontWeight: 600, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1 }}>
-          Money<span style={{ color: "#5aa7ff" }}>IQ</span><span style={{ color: "#58c46f" }}>-AI</span>
-        </Typography>
-
-        <Typography
-          sx={{
-            fontSize: 9,
-            color: "rgba(255,255,255,0.62)",
-            fontWeight: 600,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            mt: 0.15,
-          }}
-        >
-          By ESM
-        </Typography>
-      </Box>
-    </Stack>
+        component="img"
+        src={sanyojanLogo}
+        alt="Sanyojan Logo"
+        sx={{ height: 38, maxWidth: 160, objectFit: "contain" }}
+      />
+    </Box>
   );
 }
 
@@ -132,7 +105,7 @@ function NavRow({ item, nested = false }) {
         px: nested ? 1.4 : 1.25,
         pl: nested ? 5.6 : 1.25,
         borderRadius: "5px",
-        color: active ? "#fff" : "#243047",
+        color: active ? "#000" : "#243047",
         bgcolor: active ? "#4088ff" : "transparent",
         "&:hover": { bgcolor: active ? "#4088ff" : "#e9edf8" },
       }}
@@ -143,7 +116,7 @@ function NavRow({ item, nested = false }) {
           display: "grid",
           placeItems: "center",
           mr: 1,
-          color: active ? "#fff" : "#5c6780",
+          color: active ? "#000" : "#5c6780",
           flexShrink: 0,
         }}
       >
@@ -166,7 +139,7 @@ function NavRow({ item, nested = false }) {
             sx={{
               width: 22,
               height: 22,
-              color: active ? "#fff" : "#4088ff",
+              color: active ? "#000" : "#4088ff",
               "&:hover": { bgcolor: active ? "rgba(255,255,255,0.14)" : "#dceaff" },
             }}
           >
@@ -200,7 +173,7 @@ function NavGroup({ section }) {
         }}
       >
         <Icon size={16} strokeWidth={1.8} />
-        <Typography sx={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{section.label}</Typography>
+        <Typography sx={{ fontSize: 13, fontWeight: 500, flex: 1, }}>{section.label}</Typography>
         <ChevronRight
           size={14}
           style={{
@@ -237,7 +210,7 @@ export default function AppShell({ children }) {
       // Fallback cleanup below.
     }
 
-    ["crm_token", "token", "accessToken", "access_token", "loginData"].forEach((key) => {
+    ["book_token", "token", "accessToken", "access_token", "loginData"].forEach((key) => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
@@ -259,11 +232,11 @@ export default function AppShell({ children }) {
       <Box
         sx={{
           height: TOPBAR_H,
-          bgcolor: "#20243a",
-          color: "#fff",
+          bgcolor: "#fff",
+          color: "#000",
           display: "flex",
           alignItems: "center",
-          borderBottom: "3px solid #58c46f",
+          borderBottom: "3px solid #4088ff",
           flexShrink: 0,
         }}
       >
@@ -284,7 +257,7 @@ export default function AppShell({ children }) {
         <Stack direction="row" alignItems="center" spacing={1.25} sx={{ flex: 1, px: 1.5, minWidth: 0 }}>
           <Box sx={{ flex: 1 }} />
 
-          <Typography sx={{ fontSize: 13, color: "#fff", maxWidth: 220 }} noWrap>
+          <Typography sx={{ fontSize: 13, color: "#000", maxWidth: 220 }} noWrap>
             {orgName}
           </Typography>
 
@@ -332,17 +305,6 @@ export default function AppShell({ children }) {
             ))}
           </List>
 
-          <Box sx={{ mt: 5, px: 1.25, pb: 1 }}>
-            <Box sx={{ p: 1.5, border: "1px solid #e1e5f0", bgcolor: "#fff", borderRadius: 2 }}>
-              <Typography sx={{ fontSize: 11, color: "#ff6847", fontWeight: 600, letterSpacing: 0.6 }}>
-                STUDENT EDITION
-              </Typography>
-
-              <Typography sx={{ fontSize: 12, color: "#4b5563", mt: 1 }}>
-                Your edition expires on <b>May 12, 2027</b>
-              </Typography>
-            </Box>
-          </Box>
         </Box>
 
         <Box
@@ -353,7 +315,7 @@ export default function AppShell({ children }) {
             height: "100%",
             overflowY: "auto",
             overflowX: "hidden",
-            bgcolor: "#fff",
+            bgcolor: "#000",
           }}
         >
           {children}

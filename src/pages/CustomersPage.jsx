@@ -23,7 +23,7 @@ import AppShell from "../components/AppShell";
 import Button from "../components/Button";
 import DataTable from "../components/DataTable";
 import Modal from "../components/Modal";
-import ZohoPartyFormModal from "../components/ZohoPartyFormModal";
+import CustomerFormModal from "../components/CustomerFormModal";
 import { customerApi } from "../api/customerVendorApi";
 import { HistoricalUiStyles } from "../styles/powerUi";
 
@@ -230,23 +230,37 @@ export default function CustomersPage() {
     }
   }, [searchParams, openCreateModal]);
 
-  const handleSubmitCustomer = async (payload) => {
+  const handleSubmitCustomer = async (payload, pendingFiles = []) => {
     setSaving(true);
 
     try {
+      let customerId;
+
       if (modalMode === "edit" && selectedCustomer) {
         const id = getId(selectedCustomer);
-
-        if (!id) {
-          toast.error("Customer id missing");
-          return;
-        }
-
+        if (!id) { toast.error("Customer id missing"); return; }
         await customerApi.update(id, payload);
+        customerId = id;
         toast.success("Customer updated");
       } else {
-        await customerApi.create(payload);
+        const res = await customerApi.create(payload);
+        const data = res?.data || res;
+        customerId = data?._id || data?.customer?._id;
         toast.success("Customer created");
+      }
+
+      // Upload any pending documents after customer is created/updated
+      if (customerId && pendingFiles.length > 0) {
+        for (const { file, title } of pendingFiles) {
+          try {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("title", title || file.name);
+            await customerApi.uploadDocument(customerId, fd);
+          } catch {
+            toast.error(`Failed to upload ${file.name}`);
+          }
+        }
       }
 
       closeCustomerModal();
@@ -459,11 +473,10 @@ export default function CustomersPage() {
         </Grid>
       </Box>
 
-      <ZohoPartyFormModal
+      <CustomerFormModal
         open={customerModal}
-        type="customer"
         mode={modalMode}
-        value={modalMode === "edit" ? selectedCustomer : emptyCustomer}
+        value={modalMode === "edit" ? selectedCustomer : null}
         saving={saving}
         onClose={closeCustomerModal}
         onSubmit={handleSubmitCustomer}

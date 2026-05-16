@@ -267,16 +267,70 @@ export default function BusinessDetailPage({ type }) {
           <Grid item xs={12} md={4} sx={{ borderRight: { md: "1px solid #e3e7ef" }, p: 2 }}>
             <SectionTitle title={cfg.entityLabel} />
             <Card bodySx={{ p: 1.5 }}><Stack direction="row" spacing={1.4} alignItems="center"><Box sx={{ width: 46, height: 46, borderRadius: 1, bgcolor: "#eef2f7", display: "grid", placeItems: "center", color: "#98a2b3" }}>👤</Box><Box><Typography sx={{ fontSize: 13, fontWeight: 600 }}>{entity.contactPerson || selectedName}</Typography><Typography sx={{ fontSize: 13 }}>{entity.mobile || entity.workPhone || "-"}</Typography><Typography sx={{ fontSize: 13 }}>{entity.email || "-"}</Typography></Box></Stack></Card>
-            <SectionTitle title="Address" />
-            <InfoRow label="Billing Address" value={entity.billingAddress || entity.address || "No Billing Address"} />
-            <InfoRow label="Shipping Address" value={entity.shippingAddress || "No Shipping Address"} />
+
+            <SectionTitle title="Billing Address" />
+            {entity.billing?.street1 ? (
+              <>
+                {entity.billing.attention && <InfoRow label="Attention" value={entity.billing.attention} />}
+                <InfoRow label="Address" value={[entity.billing.street1, entity.billing.street2].filter(Boolean).join(", ")} />
+                {entity.billing.city && <InfoRow label="City" value={entity.billing.city} />}
+                {entity.billing.state && <InfoRow label="State" value={entity.billing.state} />}
+                {entity.billing.pinCode && <InfoRow label="Pin Code" value={entity.billing.pinCode} />}
+                {entity.billing.country && <InfoRow label="Country" value={entity.billing.country} />}
+                {entity.billing.phone && <InfoRow label="Phone" value={entity.billing.phone} />}
+                {entity.billing.fax && <InfoRow label="Fax" value={entity.billing.fax} />}
+              </>
+            ) : (
+              <InfoRow label="Billing Address" value={entity.billingAddress || entity.address || "-"} />
+            )}
+
+            <SectionTitle title="Shipping Address" />
+            {entity.shipping?.street1 ? (
+              <>
+                {entity.shipping.attention && <InfoRow label="Attention" value={entity.shipping.attention} />}
+                <InfoRow label="Address" value={[entity.shipping.street1, entity.shipping.street2].filter(Boolean).join(", ")} />
+                {entity.shipping.city && <InfoRow label="City" value={entity.shipping.city} />}
+                {entity.shipping.state && <InfoRow label="State" value={entity.shipping.state} />}
+                {entity.shipping.pinCode && <InfoRow label="Pin Code" value={entity.shipping.pinCode} />}
+                {entity.shipping.phone && <InfoRow label="Phone" value={entity.shipping.phone} />}
+              </>
+            ) : (
+              <InfoRow label="Shipping Address" value={entity.shippingAddress || "-"} />
+            )}
+
             <SectionTitle title="Other Details" />
             <InfoRow label={`${cfg.entityLabel} Type`} value={entity[cfg.typeKey] || "Business"} />
             <InfoRow label="Default Currency" value={entity.currency || "INR"} />
+            <InfoRow label="Payment Terms" value={entity.paymentTerms || "Due on Receipt"} />
+            <InfoRow label="Opening Balance" value={entity.openingBalance != null ? `INR ${Number(entity.openingBalance).toLocaleString("en-IN")}` : "-"} />
+            {entity.pan && <InfoRow label="PAN" value={entity.pan} />}
+            {entity.gstNumber && <InfoRow label="GST Number" value={entity.gstNumber} />}
+            {entity.accountsReceivable && <InfoRow label="Accounts Receivable" value={entity.accountsReceivable} />}
             <InfoRow label="Portal Status" value={type === "customer" ? (entity.enablePortal ? "Enabled" : "Disabled") : "Disabled"} />
             <InfoRow label={`${cfg.entityLabel} Language`} value={entity.language || "English"} />
-            {/* <SectionTitle title="Contact Persons" action={<Button variant="ghost" size="small" icon={Plus} />} /> */}
-            <InfoRow label="Primary" value={entity.contactPerson || "-"} />
+
+            <SectionTitle title="Contact Persons" />
+            {Array.isArray(entity.contactPersons) && entity.contactPersons.length > 0 ? (
+              entity.contactPersons.map((cp, i) => (
+                <Box key={cp._id || i} sx={{ mb: 1.5, pb: 1.5, borderBottom: i < entity.contactPersons.length - 1 ? "1px solid #f0f2f5" : "none" }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 500, color: "#111827" }}>
+                    {[cp.salutation, cp.firstName, cp.lastName].filter(Boolean).join(" ") || "-"}
+                  </Typography>
+                  {cp.email && <Typography sx={{ fontSize: 12, color: "#667085" }}>{cp.email}</Typography>}
+                  {(cp.workPhone || cp.phone) && <Typography sx={{ fontSize: 12, color: "#667085" }}>{cp.workPhone || cp.phone}</Typography>}
+                  {cp.mobile && <Typography sx={{ fontSize: 12, color: "#667085" }}>{cp.mobile}</Typography>}
+                </Box>
+              ))
+            ) : (
+              <Typography sx={{ fontSize: 13, color: "#667085", mb: 1 }}>{entity.contactPerson || "-"}</Typography>
+            )}
+
+            {entity.remarks && (
+              <>
+                <SectionTitle title="Remarks" />
+                <Typography sx={{ fontSize: 13, color: "#374151", mb: 1, whiteSpace: "pre-wrap" }}>{entity.remarks}</Typography>
+              </>
+            )}
             <SectionTitle
   title="Bank Account Details"
   action={

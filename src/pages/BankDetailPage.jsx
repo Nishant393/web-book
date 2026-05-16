@@ -38,6 +38,37 @@ import { HistoricalUiStyles } from "../styles/powerUi";
 const PAGE_LIMIT = 100;
 const FALLBACK_HEAD_TYPES = ["Income", "Expense", "Asset", "Liability", "Tax", "Loan", "Capital"];
 
+const DEBIT_CATEGORIES = [
+  "Expense", "Vendor Advance", "Vendor Payment",
+  "Transfer To Another Account", "Card Payment",
+  "Owner Drawings", "Credit Note Refund",
+];
+
+const CREDIT_CATEGORIES = [
+  "Customer Advance", "Customer Payment",
+  "Transfer From Another Account", "Interest Income",
+  "Other Income", "Expense Refund", "Deposit From Other Accounts",
+];
+
+const RECEIVED_VIA_OPTIONS = ["Cash", "Cheque", "Bank Transfer", "UPI", "NEFT", "RTGS", "IMPS", "Other"];
+
+const CATEGORY_FIELDS = {
+  Expense:                        ["expenseAccount", "vendor", "invoiceNo", "referenceNo", "customer"],
+  "Vendor Advance":               ["vendor", "referenceNo"],
+  "Vendor Payment":               ["vendor", "invoiceNo", "referenceNo"],
+  "Transfer To Another Account":  ["toAccount", "referenceNo"],
+  "Card Payment":                 ["referenceNo"],
+  "Owner Drawings":               ["referenceNo"],
+  "Credit Note Refund":           ["customer", "referenceNo"],
+  "Customer Advance":             ["customer", "bankCharges", "receivedVia", "referenceNo"],
+  "Customer Payment":             ["customer", "invoiceNo", "referenceNo"],
+  "Transfer From Another Account":["fromAccount", "referenceNo"],
+  "Interest Income":              ["referenceNo"],
+  "Other Income":                 ["referenceNo"],
+  "Expense Refund":               ["vendor", "referenceNo"],
+  "Deposit From Other Accounts":  ["fromAccount", "referenceNo"],
+};
+
 const PAGE_SX = {
   width: "100%",
   height: "100%",
@@ -287,16 +318,24 @@ export default function BankDetailPage() {
 
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [categorizeDraft, setCategorizeDraft] = useState({
+    category: "",
+    expenseAccountId: "",
+    expenseAccountName: "",
+    fromAccount: "",
+    toAccount: "",
+    bankCharges: "",
+    receivedVia: "",
     party: null,
     partyName: "",
-    headType: "",
-    subHeadId: "",
-    subHeadName: "",
+    invoiceNo: "",
+    referenceNo: "",
     remarks: "",
   });
   const [categorizeSaving, setCategorizeSaving] = useState(false);
 
   const partyOptions = useMemo(() => buildPartyOptions(customers, vendors), [customers, vendors]);
+  const vendorOptions = useMemo(() => partyOptions.filter((o) => o.type === "VENDOR"), [partyOptions]);
+  const customerOptions = useMemo(() => partyOptions.filter((o) => o.type === "CUSTOMER"), [partyOptions]);
 
   const prepareDraftRows = useCallback((list) => {
     const nextDrafts = {};
@@ -308,9 +347,16 @@ export default function BankDetailPage() {
         linkedPartyType: row.linkedPartyType || "",
         linkedPartyId: row.linkedPartyId || "",
         linkedPartyName: row.linkedPartyName || row.partyName || "",
+        category: row.category || "",
         headType: row.headType || "",
         subHeadId: row.subHeadId?._id || row.subHeadId || row.subHead?.id || row.subHead?._id || "",
         subHeadName: row.subHeadName || row.subHead?.name || "",
+        fromAccount: row.fromAccount || "",
+        toAccount: row.toAccount || "",
+        bankCharges: row.bankCharges || "",
+        receivedVia: row.receivedVia || "",
+        invoiceNo: row.invoiceNo || "",
+        referenceNo: row.referenceNo || "",
         remarks: row.remarks || "",
       };
     });
@@ -491,11 +537,17 @@ export default function BankDetailPage() {
 
     setSelectedTransaction(row);
     setCategorizeDraft({
+      category: draft.category || row.category || "",
+      expenseAccountId: draft.subHeadId || row.subHeadId?._id || row.subHeadId || "",
+      expenseAccountName: draft.subHeadName || row.subHeadName || row.subHead?.name || "",
+      fromAccount: draft.fromAccount || row.fromAccount || "",
+      toAccount: draft.toAccount || row.toAccount || "",
+      bankCharges: draft.bankCharges || row.bankCharges || "",
+      receivedVia: draft.receivedVia || row.receivedVia || "",
       party: selectedParty,
       partyName: selectedParty?.name || rawName || "",
-      headType: draft.headType || row.headType || "",
-      subHeadId: draft.subHeadId || row.subHeadId?._id || row.subHeadId || "",
-      subHeadName: draft.subHeadName || row.subHeadName || row.subHead?.name || "",
+      invoiceNo: draft.invoiceNo || row.invoiceNo || "",
+      referenceNo: draft.referenceNo || row.referenceNo || "",
       remarks: draft.remarks || row.remarks || "",
     });
   };
@@ -503,11 +555,17 @@ export default function BankDetailPage() {
   const closeCategorizePanel = () => {
     setSelectedTransaction(null);
     setCategorizeDraft({
+      category: "",
+      expenseAccountId: "",
+      expenseAccountName: "",
+      fromAccount: "",
+      toAccount: "",
+      bankCharges: "",
+      receivedVia: "",
       party: null,
       partyName: "",
-      headType: "",
-      subHeadId: "",
-      subHeadName: "",
+      invoiceNo: "",
+      referenceNo: "",
       remarks: "",
     });
   };
@@ -515,12 +573,14 @@ export default function BankDetailPage() {
   const updateCategorizeField = (field, value) => {
     setCategorizeDraft((prev) => {
       const next = { ...prev, [field]: value };
-
-      if (field === "subHeadId") {
-        const match = subHeads.find((item) => String(getId(item)) === String(value));
-        next.subHeadName = match?.name || match?.subHeadName || "";
+      if (field === "category") {
+        next.party = null;
+        next.partyName = "";
       }
-
+      if (field === "expenseAccountId") {
+        const match = subHeads.find((item) => String(getId(item)) === String(value));
+        next.expenseAccountName = match?.name || match?.subHeadName || "";
+      }
       return next;
     });
   };
@@ -528,27 +588,33 @@ export default function BankDetailPage() {
   const saveCategorization = async () => {
     const row = selectedTransaction;
     const rowId = getId(row);
-
     if (!rowId) return;
 
-    if (!categorizeDraft.headType) {
-      toast.error("Select category/head before saving");
+    if (!categorizeDraft.category) {
+      toast.error("Select a category before saving");
       return;
     }
 
     setCategorizeSaving(true);
-
     try {
       const party = categorizeDraft.party;
-      const selectedSubHead = subHeads.find((item) => String(getId(item)) === String(categorizeDraft.subHeadId));
+      const selectedSubHead = subHeads.find((item) => String(getId(item)) === String(categorizeDraft.expenseAccountId));
+      const needsVendor = ["Expense", "Vendor Advance", "Vendor Payment", "Expense Refund"].includes(categorizeDraft.category);
+      const needsCustomer = ["Customer Advance", "Customer Payment", "Credit Note Refund"].includes(categorizeDraft.category);
 
       const patch = {
-        headType: categorizeDraft.headType || null,
-        subHeadId: categorizeDraft.subHeadId || undefined,
-        subHeadName: selectedSubHead?.name || selectedSubHead?.subHeadName || categorizeDraft.subHeadName || "",
+        category: categorizeDraft.category,
+        subHeadId: categorizeDraft.expenseAccountId || undefined,
+        subHeadName: selectedSubHead?.name || selectedSubHead?.subHeadName || categorizeDraft.expenseAccountName || "",
+        expenseAccountName: selectedSubHead?.name || selectedSubHead?.subHeadName || categorizeDraft.expenseAccountName || "",
+        fromAccount: categorizeDraft.fromAccount || "",
+        toAccount: categorizeDraft.toAccount || "",
+        bankCharges: categorizeDraft.bankCharges !== "" ? Number(categorizeDraft.bankCharges) : 0,
+        receivedVia: categorizeDraft.receivedVia || "",
+        invoiceNo: categorizeDraft.invoiceNo || "",
+        referenceNo: categorizeDraft.referenceNo || "",
         partyName: party?.name || categorizeDraft.partyName || "",
-        name: party?.name || categorizeDraft.partyName || "",
-        linkedPartyType: party?.type || "",
+        linkedPartyType: party?.type || (needsVendor ? "VENDOR" : needsCustomer ? "CUSTOMER" : ""),
         linkedPartyId: party?.id || null,
         linkedPartyName: party?.name || categorizeDraft.partyName || "",
         remarks: categorizeDraft.remarks || "",
@@ -558,13 +624,10 @@ export default function BankDetailPage() {
 
       setDraftRows((prev) => ({
         ...prev,
-        [rowId]: {
-          ...(prev[rowId] || {}),
-          ...patch,
-        },
+        [rowId]: { ...(prev[rowId] || {}), ...patch },
       }));
 
-      updateTransactionLocally(rowId, patch);
+      updateTransactionLocally(rowId, { ...patch, category: categorizeDraft.category });
       markSavedGreen(rowId, "row");
       toast.success("Transaction categorized");
     } catch (error) {
@@ -649,7 +712,9 @@ export default function BankDetailPage() {
             {row.partyName || row.linkedPartyName ? (
               <Chip size="small" label={row.partyName || row.linkedPartyName} variant="outlined" />
             ) : null}
-            {row.headType ? <Chip size="small" label={row.headType} color="primary" variant="outlined" /> : null}
+            {(row.category || row.headType) ? (
+              <Chip size="small" label={row.category || row.headType} color="primary" variant="outlined" />
+            ) : null}
             {row.subHeadName ? <Chip size="small" label={row.subHeadName} variant="outlined" /> : null}
             {row?.duplicateCheck?.isDuplicateTransaction || row.isDuplicateTransaction || row.duplicateTransaction ? (
               <Chip size="small" label="Duplicate" color="error" variant="outlined" />
@@ -680,7 +745,7 @@ export default function BankDetailPage() {
       key: "status",
       header: "Status",
       render: (row) => {
-        const mapped = Boolean(row.headType || row.subHeadName || row.partyName || row.linkedPartyName);
+        const mapped = Boolean(row.category || row.headType || row.subHeadName || row.partyName || row.linkedPartyName);
         return (
           <Chip
             size="small"
@@ -868,112 +933,186 @@ export default function BankDetailPage() {
                 </Stack>
 
                 <Box sx={{ p: 2, overflow: "auto", minHeight: 0, flex: 1 }}>
-                  <Stack spacing={2}>
-                    <FormControl fullWidth size="small">
-                      <Typography sx={{ fontSize: 13, color: "error.main", mb: 0.7 }}>
-                        Category*
-                      </Typography>
-                      <Select
-                        displayEmpty
-                        value={categorizeDraft.headType || ""}
-                        onChange={(e) => updateCategorizeField("headType", e.target.value)}
-                      >
-                        <MenuItem value="">Select category</MenuItem>
-                        {headTypes.map((type) => (
-                          <MenuItem key={type} value={type}>
-                            {type}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                  {(() => {
+                    const isDebit = amount.direction === "DEBIT";
+                    const isCredit = amount.direction === "CREDIT";
+                    const categories = isDebit ? DEBIT_CATEGORIES : isCredit ? CREDIT_CATEGORIES : [...DEBIT_CATEGORIES, ...CREDIT_CATEGORIES];
+                    const currentCat = categorizeDraft.category;
+                    const fields = CATEGORY_FIELDS[currentCat] || [];
+                    const has = (f) => fields.includes(f);
 
-                    <FormControl fullWidth size="small">
-                      <Typography sx={{ fontSize: 13, color: "text.primary", mb: 0.7 }}>
-                        Head / Subhead
-                      </Typography>
-                      <Select
-                        displayEmpty
-                        value={categorizeDraft.subHeadId || ""}
-                        onChange={(e) => updateCategorizeField("subHeadId", e.target.value)}
-                      >
-                        <MenuItem value="">Select subhead</MenuItem>
-                        {subHeads.map((item) => (
-                          <MenuItem key={getId(item)} value={getId(item)}>
-                            {item.name || item.subHeadName}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    return (
+                      <Stack spacing={2.5}>
+                        {/* Category */}
+                        <FormControl fullWidth size="small">
+                          <Typography sx={{ fontSize: 13, color: "error.main", mb: 0.7, fontWeight: 600 }}>Category*</Typography>
+                          <Select
+                            displayEmpty
+                            value={currentCat}
+                            onChange={(e) => updateCategorizeField("category", e.target.value)}
+                          >
+                            <MenuItem value="">Select category</MenuItem>
+                            {categories.map((cat) => (
+                              <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
 
-                    <Divider />
+                        {/* Expense Account (Expense category only) */}
+                        {has("expenseAccount") && (
+                          <FormControl fullWidth size="small">
+                            <Typography sx={{ fontSize: 13, color: "error.main", mb: 0.7, fontWeight: 600 }}>Expense Account*</Typography>
+                            <Select
+                              displayEmpty
+                              value={categorizeDraft.expenseAccountId || ""}
+                              onChange={(e) => updateCategorizeField("expenseAccountId", e.target.value)}
+                            >
+                              <MenuItem value="">Select account</MenuItem>
+                              {subHeads.map((item) => (
+                                <MenuItem key={getId(item)} value={getId(item)}>
+                                  {item.name || item.subHeadName}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
 
-                    <ReadOnlyField label="Date" value={formatDate(selectedTransaction.transactionDate)} />
+                        {/* Vendor */}
+                        {has("vendor") && (
+                          <Box>
+                            <Typography sx={{ fontSize: 13, color: "text.secondary", mb: 0.7, fontWeight: 600 }}>Vendor</Typography>
+                            <Autocomplete
+                              size="small"
+                              options={vendorOptions}
+                              value={categorizeDraft.party}
+                              getOptionLabel={(option) => option?.label || ""}
+                              isOptionEqualToValue={(option, value) => String(option?.id) === String(value?.id)}
+                              onChange={(_, value) => setCategorizeDraft((prev) => ({ ...prev, party: value, partyName: value?.name || "" }))}
+                              renderInput={(params) => <TextField {...params} placeholder="Search vendor" size="small" />}
+                            />
+                          </Box>
+                        )}
 
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Amount"
-                      value={moneyWithRupee(amount.amount)}
-                      InputProps={{
-                        readOnly: true,
-                        sx: {
-                          color: amount.color,
-                          fontWeight: 700,
-                        },
-                      }}
-                      helperText={amount.direction === "DEBIT" ? "Withdrawal / Debit transaction" : amount.direction === "CREDIT" ? "Deposit / Credit transaction" : ""}
-                    />
+                        {/* Customer */}
+                        {has("customer") && (
+                          <Box>
+                            <Typography sx={{ fontSize: 13, color: "text.secondary", mb: 0.7, fontWeight: 600 }}>Customer</Typography>
+                            <Autocomplete
+                              size="small"
+                              options={customerOptions}
+                              value={categorizeDraft.party}
+                              getOptionLabel={(option) => option?.label || ""}
+                              isOptionEqualToValue={(option, value) => String(option?.id) === String(value?.id)}
+                              onChange={(_, value) => setCategorizeDraft((prev) => ({ ...prev, party: value, partyName: value?.name || "" }))}
+                              renderInput={(params) => <TextField {...params} placeholder="Select customer" size="small" />}
+                            />
+                          </Box>
+                        )}
 
-                    <Autocomplete
-                      size="small"
-                      options={partyOptions}
-                      value={categorizeDraft.party}
-                      getOptionLabel={(option) => option?.label || ""}
-                      isOptionEqualToValue={(option, value) => String(option?.id) === String(value?.id) && String(option?.type) === String(value?.type)}
-                      onChange={(_, value) => {
-                        setCategorizeDraft((prev) => ({
-                          ...prev,
-                          party: value,
-                          partyName: value?.name || "",
-                        }));
-                      }}
-                      renderInput={(params) => (
+                        {/* From Account */}
+                        {has("fromAccount") && (
+                          <Box>
+                            <Typography sx={{ fontSize: 13, color: "error.main", mb: 0.7, fontWeight: 600 }}>From Account*</Typography>
+                            <TextField
+                              fullWidth size="small"
+                              value={categorizeDraft.fromAccount || ""}
+                              onChange={(e) => updateCategorizeField("fromAccount", e.target.value)}
+                              placeholder="Source account"
+                            />
+                          </Box>
+                        )}
+
+                        {/* To Account */}
+                        {has("toAccount") && (
+                          <Box>
+                            <Typography sx={{ fontSize: 13, color: "error.main", mb: 0.7, fontWeight: 600 }}>To Account*</Typography>
+                            <TextField
+                              fullWidth size="small"
+                              value={categorizeDraft.toAccount || ""}
+                              onChange={(e) => updateCategorizeField("toAccount", e.target.value)}
+                              placeholder="Destination account"
+                            />
+                          </Box>
+                        )}
+
+                        <Divider />
+
+                        {/* Date - always shown */}
+                        <ReadOnlyField label="Date*" value={formatDate(selectedTransaction.transactionDate)} />
+
+                        {/* Amount - always shown */}
                         <TextField
-                          {...params}
-                          label="Customer / Vendor"
-                          placeholder="Search customer or vendor"
+                          fullWidth size="small" label="Amount*"
+                          value={moneyWithRupee(amount.amount)}
+                          InputProps={{
+                            readOnly: true,
+                            sx: { color: amount.direction === "DEBIT" ? "error.main" : "success.main", fontWeight: 700 },
+                          }}
                         />
-                      )}
-                    />
 
-                    {!categorizeDraft.party ? (
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="Name"
-                        value={categorizeDraft.partyName || ""}
-                        onChange={(e) => updateCategorizeField("partyName", e.target.value)}
-                        placeholder="Enter party name manually"
-                      />
-                    ) : null}
+                        {/* Invoice# */}
+                        {has("invoiceNo") && (
+                          <TextField
+                            fullWidth size="small" label="Invoice#"
+                            value={categorizeDraft.invoiceNo || ""}
+                            onChange={(e) => updateCategorizeField("invoiceNo", e.target.value)}
+                          />
+                        )}
 
-                    <ReadOnlyField
-                      label="Description"
-                      value={selectedTransaction.description || selectedTransaction.narration || ""}
-                      multiline
-                    />
+                        {/* Reference# */}
+                        {has("referenceNo") && (
+                          <TextField
+                            fullWidth size="small" label="Reference#"
+                            value={categorizeDraft.referenceNo || ""}
+                            onChange={(e) => updateCategorizeField("referenceNo", e.target.value)}
+                          />
+                        )}
 
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Remarks"
-                      value={categorizeDraft.remarks || ""}
-                      onChange={(e) => updateCategorizeField("remarks", e.target.value)}
-                      multiline
-                      minRows={2}
-                      placeholder="Optional internal note"
-                    />
-                  </Stack>
+                        {/* Bank Charges */}
+                        {has("bankCharges") && (
+                          <TextField
+                            fullWidth size="small" label="Bank Charges (if any)"
+                            type="number"
+                            value={categorizeDraft.bankCharges || ""}
+                            onChange={(e) => updateCategorizeField("bankCharges", e.target.value)}
+                          />
+                        )}
+
+                        {/* Received Via */}
+                        {has("receivedVia") && (
+                          <FormControl fullWidth size="small">
+                            <Typography sx={{ fontSize: 13, color: "text.secondary", mb: 0.7 }}>Received Via</Typography>
+                            <Select
+                              displayEmpty
+                              value={categorizeDraft.receivedVia || ""}
+                              onChange={(e) => updateCategorizeField("receivedVia", e.target.value)}
+                            >
+                              <MenuItem value="">Select</MenuItem>
+                              {RECEIVED_VIA_OPTIONS.map((opt) => (
+                                <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
+
+                        {/* Description - always shown */}
+                        <ReadOnlyField
+                          label="Description"
+                          value={selectedTransaction.description || selectedTransaction.narration || ""}
+                          multiline
+                        />
+
+                        {/* Remarks */}
+                        <TextField
+                          fullWidth size="small" label="Remarks"
+                          value={categorizeDraft.remarks || ""}
+                          onChange={(e) => updateCategorizeField("remarks", e.target.value)}
+                          multiline minRows={2}
+                          placeholder="Optional internal note"
+                        />
+                      </Stack>
+                    );
+                  })()}
                 </Box>
 
                 <Stack

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Box,
   Chip,
@@ -344,12 +344,27 @@ export function statusChip(label, tone = "gray") {
 }
 export function SimpleLineChart({
   data = [],
-  greenKey = "income",
-  grayKey = "balance",
+  greenKey = "balance",
+  grayKey = "cash",
+  greenLabel = "Bank Balance",
+  grayLabel = "Cash In Hand",
   height = 320,
 }) {
+  const [hovered, setHovered] = useState(null);
+
   const width = 1000;
   const padding = { top: 28, right: 28, bottom: 42, left: 58 };
+
+  const formatMoney = (value) => {
+    const n = Number(value || 0);
+
+    return n.toLocaleString("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
 
   const values = data.flatMap((d) => [
     Number(d[greenKey] || 0),
@@ -362,6 +377,7 @@ export function SimpleLineChart({
 
   const x = (index) => {
     if (data.length <= 1) return padding.left;
+
     return (
       padding.left +
       (index * (width - padding.left - padding.right)) / (data.length - 1)
@@ -382,28 +398,132 @@ export function SimpleLineChart({
       .join(" ");
 
   const ticks = 5;
+
   const yTicks = Array.from({ length: ticks }, (_, i) => {
     const value = max - (i * range) / (ticks - 1);
+
     return {
       value,
       y: y(value),
     };
   });
 
+  const hoveredData =
+    hovered && data[hovered.index] ? data[hovered.index] : null;
+
+  const hoverX = hoveredData ? x(hovered.index) : 0;
+  const hoverGrayY = hoveredData ? y(hoveredData[grayKey]) : 0;
+  const hoverGreenY = hoveredData ? y(hoveredData[greenKey]) : 0;
+
+  const tooltipLeft = hoveredData
+    ? Math.min(92, Math.max(8, (hoverX / width) * 100))
+    : 0;
+
+  const tooltipTop = hoveredData
+    ? Math.min(
+        82,
+        Math.max(6, (Math.min(hoverGrayY, hoverGreenY) / height) * 100 - 16)
+      )
+    : 0;
+
   return (
     <Box
       sx={{
         width: "100%",
-        overflowX: "auto",
+        position: "relative",
+        overflow: "hidden",
         pt: 1,
       }}
+      onMouseLeave={() => setHovered(null)}
     >
+      {hoveredData ? (
+        <Box
+          sx={{
+            position: "absolute",
+            left: `${tooltipLeft}%`,
+            top: `${tooltipTop}%`,
+            transform: "translate(-50%, -100%)",
+            zIndex: 5,
+            minWidth: 170,
+            borderRadius: "8px",
+            border: "1px solid #e3e7ef",
+            bgcolor: "#fff",
+            boxShadow: "0 10px 28px rgba(15,23,42,0.16)",
+            px: 1.4,
+            py: 1.1,
+            pointerEvents: "none",
+          }}
+        >
+          <Box
+            sx={{
+              fontSize: 12,
+              color: "#667085",
+              mb: 0.8,
+              fontWeight: 600,
+            }}
+          >
+            {hoveredData.label || hoveredData.key || "-"}
+          </Box>
+
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: "2px",
+                bgcolor: "#9aa1b5",
+              }}
+            />
+            <Box sx={{ fontSize: 12, color: "#667085", flex: 1 }}>
+              {grayLabel}
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              fontSize: 14,
+              color: "#111827",
+              fontWeight: 700,
+              mb: 0.8,
+              pl: 2,
+            }}
+          >
+            {formatMoney(hoveredData[grayKey])}
+          </Box>
+
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: "2px",
+                bgcolor: "#18b779",
+              }}
+            />
+            <Box sx={{ fontSize: 12, color: "#667085", flex: 1 }}>
+              {greenLabel}
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              fontSize: 14,
+              color: "#111827",
+              fontWeight: 700,
+              pl: 2,
+            }}
+          >
+            {formatMoney(hoveredData[greenKey])}
+          </Box>
+        </Box>
+      ) : null}
+
       <Box
         component="svg"
         viewBox={`0 0 ${width} ${height}`}
         sx={{
           width: "100%",
-          minWidth: 760,
+          minWidth: 0,
           height,
           display: "block",
           bgcolor: "#fff",
@@ -419,6 +539,7 @@ export function SimpleLineChart({
               stroke="#edf0f6"
               strokeWidth="1"
             />
+
             <text
               x={padding.left - 12}
               y={tick.y + 4}
@@ -438,6 +559,7 @@ export function SimpleLineChart({
           y2={height - padding.bottom}
           stroke="#d7dce8"
         />
+
         <line
           x1={padding.left}
           x2={width - padding.right}
@@ -450,15 +572,51 @@ export function SimpleLineChart({
           d={buildPath(grayKey)}
           fill="none"
           stroke="#9aa1b5"
-          strokeWidth="2"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
 
         <path
           d={buildPath(greenKey)}
           fill="none"
           stroke="#18b779"
-          strokeWidth="2"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
+
+        {hoveredData ? (
+          <>
+            <line
+              x1={hoverX}
+              x2={hoverX}
+              y1={padding.top}
+              y2={height - padding.bottom}
+              stroke="#cbd5e1"
+              strokeWidth="1"
+              strokeDasharray="4 4"
+            />
+
+            <circle
+              cx={hoverX}
+              cy={hoverGrayY}
+              r="4.5"
+              fill="#fff"
+              stroke="#9aa1b5"
+              strokeWidth="2"
+            />
+
+            <circle
+              cx={hoverX}
+              cy={hoverGreenY}
+              r="4.5"
+              fill="#fff"
+              stroke="#18b779"
+              strokeWidth="2"
+            />
+          </>
+        ) : null}
 
         {data.map((d, index) => {
           if (index % 3 !== 0 && index !== data.length - 1) return null;
@@ -480,14 +638,39 @@ export function SimpleLineChart({
         <g transform={`translate(${padding.left}, ${height - 4})`}>
           <rect width="8" height="8" rx="2" fill="#9aa1b5" />
           <text x="14" y="8" fontSize="12" fill="#111827">
-            Cash In Hand
+            {grayLabel}
           </text>
 
           <rect x="115" width="8" height="8" rx="2" fill="#18b779" />
           <text x="129" y="8" fontSize="12" fill="#111827">
-            Bank Balance
+            {greenLabel}
           </text>
         </g>
+
+        {data.map((d, index) => {
+          const currentX = x(index);
+
+          const left =
+            index === 0 ? padding.left : (x(index - 1) + currentX) / 2;
+
+          const right =
+            index === data.length - 1
+              ? width - padding.right
+              : (currentX + x(index + 1)) / 2;
+
+          return (
+            <rect
+              key={`hover-${d.key || index}`}
+              x={left}
+              y={padding.top}
+              width={Math.max(1, right - left)}
+              height={height - padding.top - padding.bottom}
+              fill="transparent"
+              onMouseEnter={() => setHovered({ index })}
+              onMouseMove={() => setHovered({ index })}
+            />
+          );
+        })}
       </Box>
     </Box>
   );

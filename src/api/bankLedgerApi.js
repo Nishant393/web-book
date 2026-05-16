@@ -13,8 +13,8 @@ const API_BASE =
 function getAuthToken() {
   try {
     return (
-      localStorage.getItem("crm_token") ||
-      sessionStorage.getItem("crm_token") ||
+      localStorage.getItem("book_token") ||
+      sessionStorage.getItem("book_token") ||
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
       localStorage.getItem("accessToken") ||

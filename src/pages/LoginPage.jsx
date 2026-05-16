@@ -232,7 +232,7 @@ export default function LoginPage() {
 
   // UI Setup Helpers
   const renderHeader = () => {
-    let title = "CRM Login";
+    let title = "Book Login";
     let subtitle = "Sign in to manage your workspace";
 
     if (view === "forgot") {
@@ -525,7 +525,7 @@ export default function LoginPage() {
           sx={{ mt: 3 }}
           color="text.disabled"
         >
-          &copy; CRM System {new Date().getFullYear()}
+          &copy; Book System {new Date().getFullYear()}
         </Typography>
       </Container>
     </Box>

@@ -25,23 +25,41 @@ export default function DashboardPage() {
         </PageBar>
         <Box sx={PAGE_PAD_SX}>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <Card title="Total Receivables" action={<Button variant="text">+ New</Button>}>
+            <Grid item xs={12} sm={6}>
+              <Card title="Total Receivables" action={<Button variant="text">+ New</Button>} sx={{ height: "100%" }}>
                 <Stack spacing={2}>
                   <Typography sx={{ fontSize: 13, color: "#4b5563" }}>Total Unpaid Invoices</Typography>
-                  <Typography sx={{ fontSize: 24, fontWeight: 500 }}>{money(totals.receivable)}</Typography>
+                  <Typography sx={{ fontSize: 28, fontWeight: 600 }}>{money(totals.receivable)}</Typography>
                   <Box sx={{ height: 10, bgcolor: "#f1f3f7", borderRadius: 99 }}><Box sx={{ width: "62%", height: "100%", bgcolor: "#4088ff", borderRadius: 99 }} /></Box>
-                  <Stack direction="row" spacing={2}><Typography sx={{ fontSize: 13 }}>Current : <b>{money(85000)}</b></Typography><Typography sx={{ fontSize: 13 }}>Overdue : <b>{money(60000)}</b></Typography></Stack>
+                  <Stack direction="row" spacing={4}>
+                    <Box>
+                      <Typography sx={{ fontSize: 11, color: "#667085", mb: 0.25 }}>Current</Typography>
+                      <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#4088ff" }}>{money(85000)}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography sx={{ fontSize: 11, color: "#667085", mb: 0.25 }}>Overdue</Typography>
+                      <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#ef4444" }}>{money(60000)}</Typography>
+                    </Box>
+                  </Stack>
                 </Stack>
               </Card>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <Card title="Total Payables" action={<Button variant="text">+ New</Button>}>
+            <Grid item xs={12} sm={6}>
+              <Card title="Total Payables" action={<Button variant="text">+ New</Button>} sx={{ height: "100%" }}>
                 <Stack spacing={2}>
                   <Typography sx={{ fontSize: 13, color: "#4b5563" }}>Total Unpaid Bills</Typography>
-                  <Typography sx={{ fontSize: 24, fontWeight: 500 }}>{money(totals.payable)}</Typography>
+                  <Typography sx={{ fontSize: 28, fontWeight: 600 }}>{money(totals.payable)}</Typography>
                   <Box sx={{ height: 10, bgcolor: "#f1f3f7", borderRadius: 99 }}><Box sx={{ width: "48%", height: "100%", bgcolor: "#f59e0b", borderRadius: 99 }} /></Box>
-                  <Stack direction="row" spacing={2}><Typography sx={{ fontSize: 13 }}>Current : <b>{money(42500)}</b></Typography><Typography sx={{ fontSize: 13 }}>Overdue : <b>{money(40000)}</b></Typography></Stack>
+                  <Stack direction="row" spacing={4}>
+                    <Box>
+                      <Typography sx={{ fontSize: 11, color: "#667085", mb: 0.25 }}>Current</Typography>
+                      <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#f59e0b" }}>{money(42500)}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography sx={{ fontSize: 11, color: "#667085", mb: 0.25 }}>Overdue</Typography>
+                      <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#ef4444" }}>{money(40000)}</Typography>
+                    </Box>
+                  </Stack>
                 </Stack>
               </Card>
             </Grid>

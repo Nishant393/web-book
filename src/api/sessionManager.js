@@ -3,8 +3,8 @@ let logoutTimer = null;
 function getStoredToken() {
   try {
     return (
-      localStorage.getItem("crm_token") ||
-      sessionStorage.getItem("crm_token") ||
+      localStorage.getItem("book_token") ||
+      sessionStorage.getItem("book_token") ||
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
       localStorage.getItem("accessToken") ||
@@ -23,8 +23,8 @@ function getStoredToken() {
 export function clearAuthStorage() {
   try {
     [
-      "crm_token",
-      "crm_user",
+      "book_token",
+      "book_user",
       "token",
       "accessToken",
       "access_token",
@@ -41,8 +41,8 @@ export function clearAuthStorage() {
 export function redirectToLogin() {
   if (typeof window === "undefined") return;
 
-  if (window.location.pathname !== "/crm/login") {
-    window.location.assign("/crm/login");
+  if (window.location.pathname !== "/book/login") {
+    window.location.assign("/book/login");
   }
 }
 

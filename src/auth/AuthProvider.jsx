@@ -38,14 +38,14 @@ export const AuthProvider = ({ children }) => {
   // 1) Initialize State from LocalStorage (prevents logout on refresh)
   const [user, setUser] = useState(() => {
     try {
-      const stored = localStorage.getItem("crm_user");
+      const stored = localStorage.getItem("book_user");
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
     }
   });
 
-  const [token, setToken] = useState(() => localStorage.getItem("crm_token") || "");
+  const [token, setToken] = useState(() => localStorage.getItem("book_token") || "");
 
   // 2) Login Function
   const login = (data) => {
@@ -69,17 +69,17 @@ export const AuthProvider = ({ children }) => {
     setToken(tokenData);
 
     // Save to Storage IMMEDIATELY
-    localStorage.setItem("crm_user", JSON.stringify(userData));
-    if (tokenData) localStorage.setItem("crm_token", tokenData);
+    localStorage.setItem("book_user", JSON.stringify(userData));
+    if (tokenData) localStorage.setItem("book_token", tokenData);
   };
 
   // 3) Logout Function
   const logout = () => {
     setUser(null);
     setToken("");
-    localStorage.removeItem("crm_user");
-    localStorage.removeItem("crm_token");
-    localStorage.removeItem("crm_auth"); // Cleanup old keys if any
+    localStorage.removeItem("book_user");
+    localStorage.removeItem("book_token");
+    localStorage.removeItem("book_auth");
   };
 
   // Keep backward compatibility: role is roleKey if present, else role

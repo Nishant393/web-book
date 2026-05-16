@@ -36,7 +36,10 @@ import {
   safeArray,
 } from "./businessUtils.jsx";
 
-const normalizeAccount = (v) => String(v || "").trim().replace(/\s+/g, "");
+const normalizeAccount = (v) =>
+  String(v || "")
+    .trim()
+    .replace(/\s+/g, "");
 
 function buildBankAccounts(statements = []) {
   const apiGrouped = safeArray(statements?.bankAccounts || []);
@@ -46,7 +49,9 @@ function buildBankAccounts(statements = []) {
   const map = new Map();
 
   safeArray(statements).forEach((s) => {
-    const acc = normalizeAccount(s.accountNumberMasked || s.accountNumber || s.accountNo);
+    const acc = normalizeAccount(
+      s.accountNumberMasked || s.accountNumber || s.accountNo,
+    );
     if (!acc) return;
 
     const existing = map.get(acc) || {
@@ -61,18 +66,22 @@ function buildBankAccounts(statements = []) {
     };
 
     existing.statementCount += 1;
-    existing.totalRows += Number(s.transactionCount || s?.validation?.totalRows || 0);
+    existing.totalRows += Number(
+      s.transactionCount || s?.validation?.totalRows || 0,
+    );
 
     if (
       s.statementFromDate &&
-      (!existing.firstFromDate || new Date(s.statementFromDate) < new Date(existing.firstFromDate))
+      (!existing.firstFromDate ||
+        new Date(s.statementFromDate) < new Date(existing.firstFromDate))
     ) {
       existing.firstFromDate = s.statementFromDate;
     }
 
     if (
       s.statementToDate &&
-      (!existing.latestToDate || new Date(s.statementToDate) > new Date(existing.latestToDate))
+      (!existing.latestToDate ||
+        new Date(s.statementToDate) > new Date(existing.latestToDate))
     ) {
       existing.latestToDate = s.statementToDate;
     }
@@ -129,14 +138,25 @@ export default function BanksPage() {
   const [accountFilter, setAccountFilter] = useState("ALL");
 
   const bankAccounts = useMemo(
-    () => buildBankAccounts(statementsPayload?.items ? statementsPayload : pickData(statementsPayload)),
+    () =>
+      buildBankAccounts(
+        statementsPayload?.items
+          ? statementsPayload
+          : pickData(statementsPayload),
+      ),
     [statementsPayload],
   );
 
-  const allTransactions = useMemo(() => Object.values(transactionsByAcc).flat(), [transactionsByAcc]);
+  const allTransactions = useMemo(
+    () => Object.values(transactionsByAcc).flat(),
+    [transactionsByAcc],
+  );
 
   const filteredTxns = useMemo(
-    () => (accountFilter === "ALL" ? allTransactions : safeArray(transactionsByAcc[accountFilter])),
+    () =>
+      accountFilter === "ALL"
+        ? allTransactions
+        : safeArray(transactionsByAcc[accountFilter]),
     [accountFilter, allTransactions, transactionsByAcc],
   );
 
@@ -145,9 +165,14 @@ export default function BanksPage() {
       const d = new Date();
       d.setDate(d.getDate() - (29 - i));
       const key = d.toISOString().slice(0, 10);
+
       return {
         key,
-        label: d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+        label: d.toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+        }),
+        cash: 0,
         income: 0,
         balance: 0,
       };
@@ -163,7 +188,10 @@ export default function BanksPage() {
       const b = map.get(key);
       if (!b) return;
 
-      b.income += Number(t.deposit || t.credit || 0) - Number(t.withdrawal || t.debit || 0);
+      b.income +=
+        Number(t.deposit || t.credit || 0) -
+        Number(t.withdrawal || t.debit || 0);
+
       b.balance = Number(t.balance || b.balance || 0);
     });
 
@@ -171,22 +199,38 @@ export default function BanksPage() {
 
     return days.map((d) => {
       running += d.income;
-      return { ...d, income: running, balance: d.balance || running };
+
+      return {
+        ...d,
+        cash: 0,
+        income: running,
+        balance: d.balance || running,
+      };
     });
   }, [filteredTxns]);
-
   const totals = useMemo(() => {
     const latestBalanceByAccount = {};
 
     allTransactions.forEach((t) => {
-      const acc = normalizeAccount(t.accountNumberMasked || t.statementAccountNumber || t.accountNo || t.bankAccount || "");
+      const acc = normalizeAccount(
+        t.accountNumberMasked ||
+          t.statementAccountNumber ||
+          t.accountNo ||
+          t.bankAccount ||
+          "",
+      );
       const key = acc || "ALL";
-      if (!latestBalanceByAccount[key]) latestBalanceByAccount[key] = Number(t.balance || 0);
+      if (!latestBalanceByAccount[key])
+        latestBalanceByAccount[key] = Number(t.balance || 0);
     });
 
-    const bankBalance = Object.values(latestBalanceByAccount).reduce((a, b) => a + Number(b || 0), 0);
+    const bankBalance = Object.values(latestBalanceByAccount).reduce(
+      (a, b) => a + Number(b || 0),
+      0,
+    );
     const uncategorized = allTransactions.filter(
-      (t) => !t.headType && !t.subHeadName && !t.partyName && !t.linkedPartyName,
+      (t) =>
+        !t.headType && !t.subHeadName && !t.partyName && !t.linkedPartyName,
     ).length;
 
     return { bankBalance, cash: 0, uncategorized };
@@ -212,7 +256,9 @@ export default function BanksPage() {
             })
             .then((r) => [
               a.accountNumberMasked,
-              safeArray(pickData(r).items || pickData(r).transactions || pickData(r)),
+              safeArray(
+                pickData(r).items || pickData(r).transactions || pickData(r),
+              ),
             ]),
         ),
       );
@@ -223,7 +269,9 @@ export default function BanksPage() {
       });
       setTransactionsByAcc(next);
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Failed to load banking overview");
+      toast.error(
+        error?.response?.data?.message || "Failed to load banking overview",
+      );
     } finally {
       setLoading(false);
     }
@@ -276,7 +324,9 @@ export default function BanksPage() {
         setPasswordRequired(true);
         toast.error("This PDF is protected. Enter password and extract again.");
       } else {
-        toast.error(e?.response?.data?.message || "Failed to extract statement");
+        toast.error(
+          e?.response?.data?.message || "Failed to extract statement",
+        );
       }
     } finally {
       setUploading(false);
@@ -292,7 +342,9 @@ export default function BanksPage() {
     }
 
     if (preview?.missingPeriod?.status || preview?.canImport === false) {
-      toast.error(preview?.missingPeriod?.message || "Missing statement period detected");
+      toast.error(
+        preview?.missingPeriod?.message || "Missing statement period detected",
+      );
       return;
     }
 
@@ -323,29 +375,39 @@ export default function BanksPage() {
       header: "Account Details",
       render: (r) => (
         <Stack>
-          <Typography sx={{ color: "#1f6ff2", fontSize: 13, cursor: "pointer" }}>
+          <Typography
+            sx={{ color: "#1f6ff2", fontSize: 13, cursor: "pointer" }}
+          >
             {r.bankName || "Bank Account"}
           </Typography>
-          <Typography sx={{ fontSize: 12, color: "#667085" }}>{r.accountNumberMasked}</Typography>
+          <Typography sx={{ fontSize: 12, color: "#667085" }}>
+            {r.accountNumberMasked}
+          </Typography>
         </Stack>
       ),
     },
     {
       key: "period",
       header: "Period",
-      render: (r) => `${dateText(r.firstFromDate)} - ${dateText(r.latestToDate)}`,
+      render: (r) =>
+        `${dateText(r.firstFromDate)} - ${dateText(r.latestToDate)}`,
     },
     {
       key: "amount",
       header: "Amount in Bank",
       align: "right",
-      render: (r) => money(safeArray(transactionsByAcc[r.accountNumberMasked])[0]?.balance || 0),
+      render: (r) =>
+        money(
+          safeArray(transactionsByAcc[r.accountNumberMasked])[0]?.balance || 0,
+        ),
     },
     {
       key: "rows",
       header: "Rows",
       align: "right",
-      render: (r) => r.totalRows || safeArray(transactionsByAcc[r.accountNumberMasked]).length,
+      render: (r) =>
+        r.totalRows ||
+        safeArray(transactionsByAcc[r.accountNumberMasked]).length,
     },
   ];
 
@@ -354,14 +416,23 @@ export default function BanksPage() {
       <HistoricalUiStyles />
       <Box sx={PAGE_SX}>
         <PageBar title="Banking Overview">
-          <Button variant="outline" icon={Upload} onClick={() => setUploadOpen(true)}>
+          <Button
+            variant="outline"
+            icon={Upload}
+            onClick={() => setUploadOpen(true)}
+          >
             Import Statement
           </Button>
         </PageBar>
 
         <Box sx={PAGE_PAD_SX}>
           <Card>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              alignItems="center"
+              sx={{ mb: 2 }}
+            >
               <Select
                 size="small"
                 value={accountFilter}
@@ -370,7 +441,10 @@ export default function BanksPage() {
               >
                 <MenuItem value="ALL">All Accounts</MenuItem>
                 {bankAccounts.map((a) => (
-                  <MenuItem key={a.accountNumberMasked} value={a.accountNumberMasked}>
+                  <MenuItem
+                    key={a.accountNumberMasked}
+                    value={a.accountNumberMasked}
+                  >
                     {a.bankName} - {a.accountNumberMasked}
                   </MenuItem>
                 ))}
@@ -378,31 +452,59 @@ export default function BanksPage() {
 
               <Button variant="text">Last 30 days</Button>
             </Stack>
+<Grid container spacing={2} sx={{ mb: 2, width: "100%" }}>
+  <Grid size={{ xs: 12, md: 6 }}>
+    <ZohoStat
+      label="Cash In Hand"
+      value={money(totals.cash)}
+      accent="#9aa1b5"
+    />
+  </Grid>
 
-            <Grid container spacing={2} sx={{ mb: 1 }}>
-              <Grid item xs={12} md={3}>
-                <ZohoStat label="Cash In Hand" value={money(totals.cash)} accent="#9aa1b5" />
-              </Grid>
+  <Grid size={{ xs: 12, md: 6 }}>
+    <ZohoStat
+      label="Bank Balance"
+      value={money(totals.bankBalance)}
+      accent="#18b779"
+    />
+  </Grid>
+</Grid>
 
-              <Grid item xs={12} md={3}>
-                <ZohoStat label="Bank Balance" value={money(totals.bankBalance)} accent="#18b779" />
-              </Grid>
-            </Grid>
+            
+<Box sx={{ width: "100%", minWidth: 0 }}>
+  <SimpleLineChart
+    data={chartData}
+    greenKey="balance"
+    grayKey="cash"
+    greenLabel="Bank Balance"
+    grayLabel="Cash In Hand"
+    height={360}
+  />
+</Box>
 
-            <SimpleLineChart data={chartData} greenKey="income" grayKey="balance" height={360} />
+       
           </Card>
 
           <Box sx={{ mt: 3 }}>
-            <Typography sx={{ fontSize: 20, fontWeight: 500, mb: 1.4 }}>Active Accounts</Typography>
+            <Typography sx={{ fontSize: 20, fontWeight: 500, mb: 1.4 }}>
+              Active Accounts
+            </Typography>
             <DataTable
               columns={accountColumns}
-              rows={bankAccounts.map((r) => ({ ...r, __rowKey: r.accountNumberMasked }))}
+              rows={bankAccounts.map((r) => ({
+                ...r,
+                __rowKey: r.accountNumberMasked,
+              }))}
               loading={loading}
               emptyText="No bank accounts found. Import a statement first."
               minWidth={1100}
               stickyHeader
               maxHeight="360px"
-              onRowClick={(row) => navigate(`/banks/${encodeURIComponent(row.accountNumberMasked)}`)}
+              onRowClick={(row) =>
+                navigate(
+                  `/banks/${encodeURIComponent(row.accountNumberMasked)}`,
+                )
+              }
             />
           </Box>
         </Box>
@@ -421,19 +523,33 @@ export default function BanksPage() {
             justifyContent="flex-end"
             sx={{ width: "100%" }}
           >
-            <Button variant="outline" onClick={closeUploadModal} disabled={uploading}>
+            <Button
+              variant="outline"
+              onClick={closeUploadModal}
+              disabled={uploading}
+            >
               Cancel
             </Button>
 
             {!preview ? (
-              <Button variant="primary" onClick={extractPreview} disabled={uploading} icon={uploading ? undefined : Upload}>
+              <Button
+                variant="primary"
+                onClick={extractPreview}
+                disabled={uploading}
+                icon={uploading ? undefined : Upload}
+              >
                 {uploading ? "Extracting..." : "Extract Preview"}
               </Button>
             ) : (
               <Button
                 variant="success"
                 onClick={confirmImport}
-                disabled={uploading || !verified || preview?.missingPeriod?.status || preview?.canImport === false}
+                disabled={
+                  uploading ||
+                  !verified ||
+                  preview?.missingPeriod?.status ||
+                  preview?.canImport === false
+                }
               >
                 {uploading ? "Saving..." : "Save / Merge Transactions"}
               </Button>
@@ -449,7 +565,10 @@ export default function BanksPage() {
               borderRadius: 3,
               border: "1px solid",
               borderColor: "divider",
-              bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.08 : 0.04),
+              bgcolor: alpha(
+                theme.palette.primary.main,
+                theme.palette.mode === "dark" ? 0.08 : 0.04,
+              ),
             }}
           >
             <Stack spacing={1}>
@@ -458,7 +577,8 @@ export default function BanksPage() {
               </Typography>
 
               <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                Select the PDF only. Bank details and transactions will be extracted automatically.
+                Select the PDF only. Bank details and transactions will be
+                extracted automatically.
               </Typography>
 
               <Stack
@@ -467,7 +587,12 @@ export default function BanksPage() {
                 alignItems={{ sm: "center" }}
                 sx={{ pt: 1 }}
               >
-                <Button variant="outline" component="label" icon={Upload} disabled={uploading}>
+                <Button
+                  variant="outline"
+                  component="label"
+                  icon={Upload}
+                  disabled={uploading}
+                >
                   {statementPdf ? statementPdf.name : "Select PDF Statement"}
                   <input
                     hidden
@@ -495,7 +620,9 @@ export default function BanksPage() {
 
               {passwordRequired || password ? (
                 <Box sx={{ mt: 1 }}>
-                  <Typography sx={{ fontSize: 12, color: "text.secondary", mb: 0.75 }}>
+                  <Typography
+                    sx={{ fontSize: 12, color: "text.secondary", mb: 0.75 }}
+                  >
                     PDF Password
                   </Typography>
                   <Box
@@ -515,8 +642,11 @@ export default function BanksPage() {
                       background: "transparent",
                     }}
                   />
-                  <Typography sx={{ fontSize: 11.5, color: "text.secondary", mt: 0.75 }}>
-                    The password is sent only for extraction and is not stored in UI.
+                  <Typography
+                    sx={{ fontSize: 11.5, color: "text.secondary", mt: 0.75 }}
+                  >
+                    The password is sent only for extraction and is not stored
+                    in UI.
                   </Typography>
                 </Box>
               ) : null}
@@ -526,14 +656,19 @@ export default function BanksPage() {
           {preview ? (
             <Stack spacing={2.5}>
               {preview?.missingPeriod?.status ? (
-                <Alert severity="error" icon={<AlertTriangle size={18} />} sx={{ borderRadius: 2 }}>
+                <Alert
+                  severity="error"
+                  icon={<AlertTriangle size={18} />}
+                  sx={{ borderRadius: 2 }}
+                >
                   {preview.missingPeriod.message}
                 </Alert>
               ) : null}
 
               {preview?.duplicateStatement?.status ? (
                 <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                  Same PDF file was uploaded before. Only new non-duplicate transactions can be imported.
+                  Same PDF file was uploaded before. Only new non-duplicate
+                  transactions can be imported.
                 </Alert>
               ) : null}
 
@@ -551,15 +686,24 @@ export default function BanksPage() {
 
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={3}>
-                    <InfoItem label="Bank" value={preview?.statement?.bankName} />
+                    <InfoItem
+                      label="Bank"
+                      value={preview?.statement?.bankName}
+                    />
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
-                    <InfoItem label="Account Holder" value={preview?.statement?.accountHolderName} />
+                    <InfoItem
+                      label="Account Holder"
+                      value={preview?.statement?.accountHolderName}
+                    />
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
-                    <InfoItem label="Account Number" value={preview?.statement?.accountNumberMasked} />
+                    <InfoItem
+                      label="Account Number"
+                      value={preview?.statement?.accountNumberMasked}
+                    />
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
@@ -572,19 +716,31 @@ export default function BanksPage() {
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
-                    <InfoItem label="Opening Balance" value={money(preview?.statement?.openingBalance)} />
+                    <InfoItem
+                      label="Opening Balance"
+                      value={money(preview?.statement?.openingBalance)}
+                    />
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
-                    <InfoItem label="Closing Balance" value={money(preview?.statement?.closingBalance)} />
+                    <InfoItem
+                      label="Closing Balance"
+                      value={money(preview?.statement?.closingBalance)}
+                    />
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
-                    <InfoItem label="Extracted Rows" value={preview?.summary?.extractedRows} />
+                    <InfoItem
+                      label="Extracted Rows"
+                      value={preview?.summary?.extractedRows}
+                    />
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
-                    <InfoItem label="New Rows" value={preview?.summary?.insertableRows} />
+                    <InfoItem
+                      label="New Rows"
+                      value={preview?.summary?.insertableRows}
+                    />
                   </Grid>
                 </Grid>
               </Paper>
@@ -594,8 +750,14 @@ export default function BanksPage() {
                 sx={{
                   p: { xs: 2, sm: 2.5 },
                   borderRadius: 3,
-                  bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.08 : 0.04),
-                  borderColor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.28 : 0.22),
+                  bgcolor: alpha(
+                    theme.palette.primary.main,
+                    theme.palette.mode === "dark" ? 0.08 : 0.04,
+                  ),
+                  borderColor: alpha(
+                    theme.palette.primary.main,
+                    theme.palette.mode === "dark" ? 0.28 : 0.22,
+                  ),
                 }}
               >
                 <FormControlLabel
@@ -616,7 +778,8 @@ export default function BanksPage() {
                     pl: { xs: 0, sm: 4 },
                   }}
                 >
-                  Required before Save / Merge. After save/merge, backend uploads the PDF to media/S3.
+                  Required before Save / Merge. After save/merge, backend
+                  uploads the PDF to media/S3.
                 </Typography>
               </Paper>
 
@@ -661,16 +824,28 @@ export default function BanksPage() {
                       header: "Status",
                       render: (row) =>
                         row.isDuplicateTransaction ? (
-                          <Chip size="small" color="error" label="Duplicate" variant="outlined" />
+                          <Chip
+                            size="small"
+                            color="error"
+                            label="Duplicate"
+                            variant="outlined"
+                          />
                         ) : (
-                          <Chip size="small" color="success" label="New" variant="outlined" />
+                          <Chip
+                            size="small"
+                            color="success"
+                            label="New"
+                            variant="outlined"
+                          />
                         ),
                     },
                   ]}
-                  rows={(preview?.sampleTransactions || []).map((row, index) => ({
-                    ...row,
-                    __rowKey: `preview-${index}`,
-                  }))}
+                  rows={(preview?.sampleTransactions || []).map(
+                    (row, index) => ({
+                      ...row,
+                      __rowKey: `preview-${index}`,
+                    }),
+                  )}
                   minWidth={900}
                   stickyHeader
                   maxHeight="280px"
