@@ -13,8 +13,8 @@ const API_BASE =
 function getAuthToken() {
   try {
     return (
-      localStorage.getItem("book_token") ||
-      sessionStorage.getItem("book_token") ||
+      localStorage.getItem("crm_token") ||
+      sessionStorage.getItem("crm_token") ||
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
       localStorage.getItem("accessToken") ||
@@ -63,6 +63,7 @@ export const bankStatementApi = {
       })
       .then(unwrap),
   confirmImport: (payload) => bankLedgerAxios.post("/api/bank-statements/confirm-import", payload).then(unwrap),
+  getBalanceHistory: (params = {}) => bankLedgerAxios.get("/api/bank-statements/balance-history", { params }).then(unwrap),
   uploadAndExtractStatement: (formData) =>
     bankLedgerAxios
       .post("/api/bank-statements/upload-extract", formData, {
@@ -86,6 +87,21 @@ export const bankStatementApi = {
   checkDuplicateTransactions: (statementId) =>
     bankLedgerAxios.post(`/api/bank-statements/${statementId}/check-duplicates`).then(unwrap),
   approveStatement: (statementId) => bankLedgerAxios.post(`/api/bank-statements/${statementId}/approve`).then(unwrap),
+};
+
+export const bankAccountApi = {
+  list:   (params = {}) => bankLedgerAxios.get("/api/bank-accounts", { params }).then(unwrap),
+  create: (payload)     => bankLedgerAxios.post("/api/bank-accounts", payload).then(unwrap),
+  update: (id, payload) => bankLedgerAxios.patch(`/api/bank-accounts/${id}`, payload).then(unwrap),
+  delete: (id)          => bankLedgerAxios.delete(`/api/bank-accounts/${id}`).then(unwrap),
+};
+
+export const cashApi = {
+  list:    (params = {}) => bankLedgerAxios.get("/api/cash-transactions", { params }).then(unwrap),
+  balance: ()            => bankLedgerAxios.get("/api/cash-transactions/balance").then(unwrap),
+  create:  (payload)     => bankLedgerAxios.post("/api/cash-transactions", payload).then(unwrap),
+  update:  (txnId, payload) => bankLedgerAxios.patch(`/api/cash-transactions/${txnId}`, payload).then(unwrap),
+  delete:  (txnId)       => bankLedgerAxios.delete(`/api/cash-transactions/${txnId}`).then(unwrap),
 };
 
 export default bankLedgerAxios;

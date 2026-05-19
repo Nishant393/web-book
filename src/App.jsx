@@ -6,10 +6,16 @@ import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPages";
 import BanksPage from "./pages/BanksPage";
 import BankDetailPage from "./pages/BankDetailPage";
+import CashDetailPage from "./pages/CashDetailPage";
 import CustomersPage from "./pages/CustomersPage";
 import CustomerDetailPage from "./pages/CustomerDetailPage";
 import VendorsPage from "./pages/VendorsPage";
 import VendorDetailPage from "./pages/VendorDetailPage";
+import ItemsPage from "./pages/ItemsPage";
+import ItemDetailPage from "./pages/ItemDetailPage";
+import SalesOrdersPage from "./pages/SalesOrdersPage";
+import SalesOrderDetailPage from "./pages/SalesOrderDetailPage";
+import ProformaInvoiceDetailPage from "./pages/ProformaInvoiceDetailPage";
 import ZohoFormPage from "./pages/ZohoFormPage";
 import SimpleModulePage from "./pages/SimpleModulePage";
 import RequireAuth from "./auth/RequireAuth";
@@ -31,15 +37,20 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
           <Route path="/banks" element={<Protected><BanksPage /></Protected>} />
+          <Route path="/banks/cash" element={<Protected><CashDetailPage /></Protected>} />
           <Route path="/banks/:id" element={<Protected><BankDetailPage /></Protected>} />
 
           <Route path="/customers" element={<Protected><CustomersPage /></Protected>} />
           <Route path="/customers/:id" element={<Protected><CustomerDetailPage /></Protected>} />
           <Route path="/vendors" element={<Protected><VendorsPage /></Protected>} />
           <Route path="/vendors/:id" element={<Protected><VendorDetailPage /></Protected>} />
+          <Route path="/items" element={<Protected><ItemsPage /></Protected>} />
+          <Route path="/items/:itemId" element={<Protected><ItemDetailPage /></Protected>} />
 
-          <Route path="/sales-orders" element={<Protected><SimpleModulePage title="Sales Orders" button="New Sales Order" /></Protected>} />
+          <Route path="/sales-orders" element={<Protected><SalesOrdersPage /></Protected>} />
           <Route path="/sales-orders/new" element={<Protected><ZohoFormPage mode="sales-order" /></Protected>} />
+          <Route path="/sales-orders/:orderId" element={<Protected><SalesOrderDetailPage /></Protected>} />
+          <Route path="/proforma-invoices/:proformaId" element={<Protected><ProformaInvoiceDetailPage /></Protected>} />
           <Route path="/invoices" element={<Protected><SimpleModulePage title="Invoices" button="New Invoice" /></Protected>} />
           <Route path="/invoices/new" element={<Protected><ZohoFormPage mode="invoice" /></Protected>} />
           <Route path="/download-receipt" element={<Protected><SimpleModulePage title="Download Receipt" button="Download" /></Protected>} />

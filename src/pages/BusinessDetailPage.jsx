@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Box, Checkbox, Grid, IconButton, MenuItem, Paper, Select, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
+import { Box, Checkbox, Grid, IconButton, Paper, Stack, Tab, Tabs, Typography, useMediaQuery, useTheme } from "@mui/material";
 import { ArrowLeft, Building2, ChevronDown, Edit, FileText, MoreHorizontal, Plus, Settings, Trash2, Upload } from "lucide-react";
 import AppShell from "../components/AppShell";
 import Button from "../components/Button";
+import CustomerFormModal from "../components/CustomerFormModal";
+import IFSCField from "../components/IFSCField";
 import DataTable from "../components/DataTable";
 import Modal from "../components/Modal";
 import ConfirmationDialog from "../components/ConfirmationDialog";
@@ -64,6 +66,7 @@ const CONFIGS = {
 const emptyOrder = { orderDate: new Date().toISOString().slice(0, 10), referenceNumber: "", description: "", amount: "", gstPercent: "", gstAmount: "", totalAmount: "", remarks: "" };
 const emptyDoc = { title: "", description: "", file: null };
 const emptyBank = { accountHolderName: "", bankName: "", accountNumber: "", reAccountNumber: "", ifsc: "" };
+const isBankIfscBlocked = (form) => form.ifsc.length > 0 && !form._ifscVerified;
 const n = (v) => Number(v || 0) || 0;
 const calc = (f) => { const base = n(f.amount); const pct = n(f.gstPercent); const gst = pct > 0 ? base * pct / 100 : n(f.gstAmount); return { amount: base, gstPercent: pct, gstAmount: Number(gst.toFixed(2)), totalAmount: Number((base + gst).toFixed(2)) }; };
 
@@ -86,6 +89,9 @@ export default function BusinessDetailPage({ type }) {
   const cfg = CONFIGS[type];
   const { id } = useParams();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [showMobileList, setShowMobileList] = useState(false);
   const [detail, setDetail] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -99,7 +105,6 @@ export default function BusinessDetailPage({ type }) {
   const [orderForm, setOrderForm] = useState(emptyOrder);
   const [docForm, setDocForm] = useState(emptyDoc);
   const [bankForm, setBankForm] = useState(emptyBank);
-  const [entityForm, setEntityForm] = useState(cfg.emptyForm);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,14 +147,22 @@ export default function BusinessDetailPage({ type }) {
 
   const selectedName = entity?.displayName || entity?.[cfg.nameKey] || cfg.entityLabel;
 
-  const openEdit = () => { setEntityForm({ ...cfg.emptyForm, ...entity }); setEditModal(true); };
+  const openEdit = () => setEditModal(true);
 
-  const saveEntity = async () => {
-    const name = entityForm[cfg.nameKey] || entityForm.displayName || entityForm.companyName;
-    if (!String(name || "").trim()) return toast.error(`${cfg.entityLabel} name is required`);
+  const saveEntity = async (payload, pendingFiles = []) => {
     setSaving(true);
     try {
-      await cfg.api.update(id, { ...entityForm, [cfg.nameKey]: name, displayName: name });
+      await cfg.api.update(id, payload);
+      if (pendingFiles.length > 0) {
+        for (const { file, title } of pendingFiles) {
+          try {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("title", title || file.name);
+            await cfg.api.uploadDocument(id, fd);
+          } catch { /* individual file error handled silently */ }
+        }
+      }
       toast.success(`${cfg.entityLabel} updated`);
       setEditModal(false);
       await load();
@@ -199,6 +212,7 @@ export default function BusinessDetailPage({ type }) {
     if (!bankForm.accountHolderName.trim()) return toast.error("Account holder name is required");
     if (!bankForm.accountNumber.trim()) return toast.error("Account number is required");
     if (bankForm.accountNumber !== bankForm.reAccountNumber) return toast.error("Account number and re-enter account number must match");
+    if (isBankIfscBlocked(bankForm)) return toast.error("IFSC verification is pending. Enter a valid 11-character IFSC.");
     setSaving(true);
     try {
       await cfg.api.addBankAccount(id, bankForm);
@@ -230,35 +244,70 @@ export default function BusinessDetailPage({ type }) {
   const total = Number(summary[cfg.totalOrderKey] || 0);
   const paid = Number(summary[cfg.totalPaidKey] || 0);
 
+  const TAB_SX = {
+    fontSize: 13, textTransform: "none", minHeight: 42,
+    "&.Mui-selected": { color: "#1f6ff2", fontWeight: 600 },
+  };
+
   return <AppShell><HistoricalUiStyles /><Box sx={{ width: "100%", height: "100%", bgcolor: "#fff", overflow: "hidden", display: "flex" }}>
-    <Box sx={{ width: 360, flexShrink: 0, borderRight: "1px solid #dfe4ef", bgcolor: "#fff", display: "flex", flexDirection: "column" }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, height: 58, borderBottom: "1px solid #e3e7ef" }}>
-        <Typography sx={{ fontSize: 16, fontWeight: 500 }}>{cfg.listTitle} <ChevronDown size={14} /></Typography>
-        <Stack direction="row" spacing={1}><Button icon={Plus} onClick={() => navigate(`${cfg.listPath}?create=1`)} /><Button variant="outline" icon={MoreHorizontal} /></Stack>
-      </Stack>
-      <Box sx={{ flex: 1, overflow: "auto" }}>
-        {items.map((item) => {
-          const active = String(getId(item)) === String(id);
-          return <Stack key={getId(item)} direction="row" spacing={1} alignItems="flex-start" onClick={() => navigate(`${cfg.listPath}/${getId(item)}`)} sx={{ px: 2, py: 1.4, cursor: "pointer", borderBottom: "1px solid #eef1f6", bgcolor: active ? "#f0f2ff" : "#fff", "&:hover": { bgcolor: "#f7f9ff" } }}>
-            <Checkbox size="small" checked={active} />
-            <Box><Typography sx={{ fontSize: 14, color: "#111827" }}>{item.displayName || item[cfg.nameKey]}</Typography><Typography sx={{ fontSize: 12, color: "#667085" }}>{money(item?.summary?.remainingPayment || 0)}</Typography></Box>
-          </Stack>;
-        })}
+    {/* Sidebar list — hidden on mobile unless toggled */}
+    {(!isMobile || showMobileList) && (
+      <Box sx={{
+        width: isMobile ? "100%" : 320,
+        flexShrink: 0,
+        borderRight: "1px solid #dfe4ef",
+        bgcolor: "#fff",
+        display: "flex",
+        flexDirection: "column",
+        position: isMobile ? "absolute" : "relative",
+        zIndex: isMobile ? 10 : "auto",
+        height: "100%",
+      }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, height: 52, borderBottom: "1px solid #e3e7ef" }}>
+          <Typography sx={{ fontSize: 15, fontWeight: 500 }}>{cfg.listTitle}</Typography>
+          <Stack direction="row" spacing={1}>
+            <Button icon={Plus} onClick={() => navigate(`${cfg.listPath}?create=1`)} />
+            {isMobile && <Button variant="outline" onClick={() => setShowMobileList(false)} sx={{ fontSize: 12 }}>Close</Button>}
+          </Stack>
+        </Stack>
+        <Box sx={{ flex: 1, overflow: "auto" }}>
+          {items.map((item) => {
+            const active = String(getId(item)) === String(id);
+            return <Stack key={getId(item)} direction="row" spacing={1} alignItems="flex-start"
+              onClick={() => { navigate(`${cfg.listPath}/${getId(item)}`); if (isMobile) setShowMobileList(false); }}
+              sx={{ px: 2, py: 1.4, cursor: "pointer", borderBottom: "1px solid #eef1f6", bgcolor: active ? "#eaf2ff" : "#fff", "&:hover": { bgcolor: "#f7f9ff" } }}>
+              <Checkbox size="small" checked={active} sx={{ "& .MuiSvgIcon-root": { color: active ? "#4088ff" : undefined } }} />
+              <Box><Typography sx={{ fontSize: 13, fontWeight: active ? 500 : 400, color: "#111827" }}>{item.displayName || item[cfg.nameKey]}</Typography>
+              <Typography sx={{ fontSize: 12, color: "#667085" }}>{money(item?.summary?.remainingPayment || 0)}</Typography></Box>
+            </Stack>;
+          })}
+        </Box>
       </Box>
-    </Box>
+    )}
 
     <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <Stack direction="row" alignItems="center" spacing={1.25} sx={{ height: 58, px: 2, borderBottom: "1px solid #e3e7ef", flexShrink: 0 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ height: 52, px: 1.5, borderBottom: "1px solid #e3e7ef", flexShrink: 0, flexWrap: "wrap" }}>
         <IconButton size="small" onClick={() => navigate(cfg.listPath)}><ArrowLeft size={18} /></IconButton>
-        <Typography sx={{ fontSize: 22, fontWeight: 400, flex: 1 }} noWrap>{selectedName}</Typography>
+        {isMobile && (
+          <IconButton size="small" onClick={() => setShowMobileList(true)} sx={{ color: "#4088ff" }}>
+            <ChevronDown size={18} />
+          </IconButton>
+        )}
+        <Typography sx={{ fontSize: isMobile ? 16 : 20, fontWeight: 500, flex: 1 }} noWrap>{selectedName}</Typography>
         <Button variant="outline" icon={Edit} onClick={openEdit}>Edit</Button>
-        <Button variant="primary" onClick={() => setOrderModal(true)}>New Transaction</Button>
-        <Button variant="outline" onClick={() => setConfirmDelete(true)} icon={Trash2}>Delete</Button>
+        {!isMobile && <Button variant="primary" onClick={() => setOrderModal(true)}>New Transaction</Button>}
+        <Button variant="outline" onClick={() => setConfirmDelete(true)} icon={Trash2}>{isMobile ? "" : "Delete"}</Button>
       </Stack>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 1, minHeight: 42, borderBottom: "1px solid #dfe4ef", flexShrink: 0 }}>
-        <Tab label="Overview" sx={{ fontSize: 13, textTransform: "none", minHeight: 42 }} />
-        <Tab label="Transactions" sx={{ fontSize: 13, textTransform: "none", minHeight: 42 }} />
-        <Tab label="Documents" sx={{ fontSize: 13, textTransform: "none", minHeight: 42 }} />
+      {isMobile && (
+        <Box sx={{ px: 1.5, py: 0.5, borderBottom: "1px solid #e3e7ef" }}>
+          <Button variant="primary" fullWidth onClick={() => setOrderModal(true)}>New Transaction</Button>
+        </Box>
+      )}
+      <Tabs value={tab} onChange={(_, v) => setTab(v)}
+        sx={{ px: 1, minHeight: 42, borderBottom: "1px solid #dfe4ef", flexShrink: 0, "& .MuiTabs-indicator": { bgcolor: "#1f6ff2" } }}>
+        <Tab label="Overview" sx={TAB_SX} />
+        <Tab label="Transactions" sx={TAB_SX} />
+        <Tab label="Documents" sx={TAB_SX} />
       </Tabs>
 
       <Box sx={{ flex: 1, overflow: "auto", bgcolor: "#fff" }}>
@@ -499,11 +548,86 @@ export default function BusinessDetailPage({ type }) {
 
     <Modal open={docModal} onClose={() => setDocModal(false)} title={`Upload ${cfg.entityLabel} Document`} footer={<Stack direction="row" spacing={1}><Button variant="outline" onClick={() => setDocModal(false)}>Cancel</Button><Button onClick={uploadDocument} disabled={saving}>{saving ? "Uploading..." : "Upload"}</Button></Stack>}><Stack spacing={2}><FormField label="Title" value={docForm.title} onChange={(v) => setDocForm((p) => ({ ...p, title: v }))} /><FormField label="Description" multiline rows={3} value={docForm.description} onChange={(v) => setDocForm((p) => ({ ...p, description: v }))} /><Button variant="outline" component="label">{docForm.file ? docForm.file.name : "Select File"}<input hidden type="file" onChange={(e) => setDocForm((p) => ({ ...p, file: e.target.files?.[0] || null }))} /></Button></Stack></Modal>
 
-    <Modal open={bankModal} onClose={() => setBankModal(false)} title="Add Bank Account Details" size="sm" footer={<Stack direction="row" spacing={1}><Button onClick={addBankAccount} disabled={saving}>Save</Button><Button variant="outline" onClick={() => setBankModal(false)}>Cancel</Button></Stack>}>
-      <Stack spacing={2}><FormField label="Account Holder Name" value={bankForm.accountHolderName} onChange={(v) => setBankForm((p) => ({ ...p, accountHolderName: v }))} /><Paper variant="outlined" sx={{ p: 2, bgcolor: "#fbfcff", borderRadius: 1.5 }}><Grid container spacing={2}><Grid item xs={12}><FormField label="Bank Name" value={bankForm.bankName} onChange={(v) => setBankForm((p) => ({ ...p, bankName: v }))} /></Grid><Grid item xs={12}><FormField label="Account Number" value={bankForm.accountNumber} onChange={(v) => setBankForm((p) => ({ ...p, accountNumber: v }))} /></Grid><Grid item xs={12}><FormField label="Re-enter Account Number" value={bankForm.reAccountNumber} onChange={(v) => setBankForm((p) => ({ ...p, reAccountNumber: v }))} /></Grid></Grid></Paper><FormField label="IFSC" value={bankForm.ifsc} onChange={(v) => setBankForm((p) => ({ ...p, ifsc: v }))} /></Stack>
+    <Modal
+      open={bankModal}
+      onClose={() => { setBankModal(false); setBankForm(emptyBank); }}
+      title="Add Bank Account Details"
+      size="sm"
+      footer={
+        <Stack direction="row" spacing={1}>
+          <Button
+            onClick={addBankAccount}
+            disabled={saving || isBankIfscBlocked(bankForm)}
+          >
+            Save
+          </Button>
+          <Button variant="outline" onClick={() => { setBankModal(false); setBankForm(emptyBank); }}>
+            Cancel
+          </Button>
+        </Stack>
+      }
+    >
+      <Stack spacing={2}>
+        <FormField
+          label="Account Holder Name"
+          value={bankForm.accountHolderName}
+          onChange={(v) => setBankForm((p) => ({ ...p, accountHolderName: v }))}
+        />
+        <Paper variant="outlined" sx={{ p: 2, bgcolor: "#fbfcff", borderRadius: 1.5 }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <FormField
+                label="Bank Name"
+                value={bankForm.bankName}
+                onChange={(v) => setBankForm((p) => ({ ...p, bankName: v }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormField
+                label="Account Number"
+                value={bankForm.accountNumber}
+                onChange={(v) => setBankForm((p) => ({ ...p, accountNumber: v }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormField
+                label="Re-enter Account Number"
+                value={bankForm.reAccountNumber}
+                onChange={(v) => setBankForm((p) => ({ ...p, reAccountNumber: v }))}
+              />
+            </Grid>
+          </Grid>
+        </Paper>
+
+        <IFSCField
+          value={bankForm.ifsc}
+          onChange={(v) => setBankForm((p) => ({ ...p, ifsc: v, _ifscVerified: false }))}
+          onVerified={(data) => {
+            setBankForm((p) => ({
+              ...p,
+              _ifscVerified: Boolean(data),
+              bankName: data?.BANK ? data.BANK : p.bankName,
+            }));
+          }}
+          label="IFSC"
+        />
+        {isBankIfscBlocked(bankForm) && (
+          <Typography sx={{ fontSize: 12, color: "#f59e0b" }}>
+            Waiting for IFSC verification… (11 characters needed)
+          </Typography>
+        )}
+      </Stack>
     </Modal>
 
-    <Modal open={editModal} onClose={() => setEditModal(false)} title={`Edit ${cfg.entityLabel}`} size="lg" footer={<Stack direction="row" spacing={1}><Button variant="outline" onClick={() => setEditModal(false)}>Cancel</Button><Button onClick={saveEntity} disabled={saving}>Save</Button></Stack>}><Grid container spacing={2}><Grid item xs={12} md={6}><FormField label={`${cfg.entityLabel} Name`} value={entityForm[cfg.nameKey] || entityForm.displayName || ""} onChange={(v) => setEntityForm((p) => ({ ...p, [cfg.nameKey]: v, displayName: v }))} /></Grid><Grid item xs={12} md={6}><FormField label="Contact Person" value={entityForm.contactPerson} onChange={(v) => setEntityForm((p) => ({ ...p, contactPerson: v }))} /></Grid><Grid item xs={12} md={6}><FormField label="Phone" value={entityForm.mobile} onChange={(v) => setEntityForm((p) => ({ ...p, mobile: v }))} /></Grid><Grid item xs={12} md={6}><FormField label="Email" value={entityForm.email} onChange={(v) => setEntityForm((p) => ({ ...p, email: v }))} /></Grid><Grid item xs={12}><FormField label="Address" multiline rows={3} value={entityForm.address || entityForm.billingAddress || ""} onChange={(v) => setEntityForm((p) => ({ ...p, address: v, billingAddress: v }))} /></Grid><Grid item xs={12}><FormField label="Remarks" multiline rows={3} value={entityForm.remarks || ""} onChange={(v) => setEntityForm((p) => ({ ...p, remarks: v }))} /></Grid></Grid></Modal>
+    <CustomerFormModal
+      open={editModal}
+      type={type}
+      mode="edit"
+      value={entity && Object.keys(entity).length ? entity : null}
+      saving={saving}
+      onClose={() => setEditModal(false)}
+      onSubmit={saveEntity}
+    />
     <ConfirmationDialog open={confirmDelete} title={`Delete ${cfg.entityLabel}?`} message={`This will delete ${selectedName}.`} confirmText="Delete" onClose={() => setConfirmDelete(false)} onConfirm={deleteEntity} loading={saving} />
   </Box></AppShell>;
 }

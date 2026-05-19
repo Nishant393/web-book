@@ -465,7 +465,6 @@ export default function CustomersPage() {
                 loading={loading}
                 loadingText="Loading customers..."
                 emptyText="No customers found. Click New Customer to add one."
-                minWidth={980}
                 onRowClick={(row) => navigate(`/customers/${getId(row)}`)}
               />
             </Paper>

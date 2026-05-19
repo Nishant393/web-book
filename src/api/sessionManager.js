@@ -3,8 +3,8 @@ let logoutTimer = null;
 function getStoredToken() {
   try {
     return (
-      localStorage.getItem("book_token") ||
-      sessionStorage.getItem("book_token") ||
+      localStorage.getItem("crm_token") ||
+      sessionStorage.getItem("crm_token") ||
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
       localStorage.getItem("accessToken") ||
@@ -23,8 +23,8 @@ function getStoredToken() {
 export function clearAuthStorage() {
   try {
     [
-      "book_token",
-      "book_user",
+      "crm_token",
+      "crm_user",
       "token",
       "accessToken",
       "access_token",

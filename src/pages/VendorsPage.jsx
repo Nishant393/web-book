@@ -23,7 +23,7 @@ import AppShell from "../components/AppShell";
 import Button from "../components/Button";
 import DataTable from "../components/DataTable";
 import Modal from "../components/Modal";
-import ZohoPartyFormModal from "../components/ZohoPartyFormModal";
+import CustomerFormModal from "../components/CustomerFormModal";
 import { vendorApi } from "../api/customerVendorApi";
 import { HistoricalUiStyles } from "../styles/powerUi";
 
@@ -230,23 +230,36 @@ export default function VendorsPage() {
     }
   }, [searchParams, openCreateModal]);
 
-  const handleSubmitVendor = async (payload) => {
+  const handleSubmitVendor = async (payload, pendingFiles = []) => {
     setSaving(true);
 
     try {
+      let vendorId;
+
       if (modalMode === "edit" && selectedVendor) {
         const id = getId(selectedVendor);
-
-        if (!id) {
-          toast.error("Vendor id missing");
-          return;
-        }
-
+        if (!id) { toast.error("Vendor id missing"); return; }
         await vendorApi.update(id, payload);
+        vendorId = id;
         toast.success("Vendor updated");
       } else {
-        await vendorApi.create(payload);
+        const res = await vendorApi.create(payload);
+        const data = res?.data || res;
+        vendorId = data?._id || data?.vendor?._id;
         toast.success("Vendor created");
+      }
+
+      if (vendorId && pendingFiles.length > 0) {
+        for (const { file, title } of pendingFiles) {
+          try {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("title", title || file.name);
+            await vendorApi.uploadDocument(vendorId, fd);
+          } catch {
+            toast.error(`Failed to upload ${file.name}`);
+          }
+        }
       }
 
       closeVendorModal();
@@ -451,7 +464,6 @@ export default function VendorsPage() {
                 loading={loading}
                 loadingText="Loading vendors..."
                 emptyText="No vendors found. Click New Vendor to add one."
-                minWidth={980}
                 onRowClick={(row) => navigate(`/vendors/${getId(row)}`)}
               />
             </Paper>
@@ -459,11 +471,11 @@ export default function VendorsPage() {
         </Grid>
       </Box>
 
-      <ZohoPartyFormModal
+      <CustomerFormModal
         open={vendorModal}
         type="vendor"
         mode={modalMode}
-        value={modalMode === "edit" ? selectedVendor : emptyVendor}
+        value={modalMode === "edit" ? selectedVendor : null}
         saving={saving}
         onClose={closeVendorModal}
         onSubmit={handleSubmitVendor}

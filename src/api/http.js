@@ -27,8 +27,8 @@ function ensureApiSuffix(base) {
 
 function getToken() {
   return (
-    localStorage.getItem("book_token") ||
-    sessionStorage.getItem("book_token") ||
+    localStorage.getItem("crm_token") ||
+    sessionStorage.getItem("crm_token") ||
     localStorage.getItem("token") ||
     sessionStorage.getItem("token") ||
     localStorage.getItem("accessToken") ||
@@ -41,7 +41,7 @@ function getToken() {
 
 function getUserMeta() {
   try {
-    const raw = localStorage.getItem("book_user");
+    const raw = localStorage.getItem("crm_user");
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;

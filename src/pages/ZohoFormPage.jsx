@@ -3,9 +3,14 @@ import { useNavigate } from "react-router-dom";
 import {
   Box,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Grid,
   IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
   Select,
@@ -43,6 +48,7 @@ import {
   salesOrderApi,
   vendorApi,
 } from "../api/customerVendorApi";
+import { itemsApi } from "../api/itemsApi";
 import { HistoricalUiStyles } from "../styles/powerUi";
 import { money } from "./businessUtils.jsx";
 import { saveDocument } from "../utils/documentStore";
@@ -540,6 +546,235 @@ const titleForSendMode = (mode) => {
   return "DOCUMENT";
 };
 
+// ─── Bulk Item Selection Modal ────────────────────────────────────────────────
+
+function BulkItemModal({ open, onClose, onAdd, isPurchase }) {
+  const [allItems,  setAllItems]  = useState([]);
+  const [loading,   setLoading]   = useState(false);
+  const [search,    setSearch]    = useState("");
+  // selected: { [itemId]: { item, qty } }
+  const [selected, setSelected]  = useState({});
+
+  // Load items once when opened
+  useEffect(() => {
+    if (!open) return;
+    setSelected({});
+    setSearch("");
+    setLoading(true);
+    itemsApi.list({ limit: 500, isActive: true })
+      .then((res) => {
+        const data = res?.data || res?.result || res || {};
+        const arr  = Array.isArray(data.items) ? data.items
+          : Array.isArray(data) ? data : [];
+        setAllItems(arr);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  const visible = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return allItems;
+    return allItems.filter((i) =>
+      (i.name || "").toLowerCase().includes(q) ||
+      (i.sku  || "").toLowerCase().includes(q)
+    );
+  }, [allItems, search]);
+
+  const getId = (item) => String(item?._id || item?.id || "");
+
+  const toggleItem = (item) => {
+    const id = getId(item);
+    setSelected((prev) => {
+      if (prev[id]) {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: { item, qty: 1 } };
+    });
+  };
+
+  const changeQty = (id, delta) => {
+    setSelected((prev) => {
+      if (!prev[id]) return prev;
+      const newQty = Math.max(1, (prev[id].qty || 1) + delta);
+      return { ...prev, [id]: { ...prev[id], qty: newQty } };
+    });
+  };
+
+  const setQty = (id, val) => {
+    const n = parseInt(val, 10);
+    if (!Number.isFinite(n) || n < 1) return;
+    setSelected((prev) => prev[id] ? { ...prev, [id]: { ...prev[id], qty: n } } : prev);
+  };
+
+  const removeSelected = (id) => {
+    setSelected((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  };
+
+  const handleAdd = () => {
+    const rows = Object.values(selected).map(({ item, qty }) => ({
+      _id: getId(item),
+      name: item.name || "",
+      salesRate:    item.salesRate    || 0,
+      purchaseRate: item.purchaseRate || 0,
+      unit: item.unit || "",
+      hsnOrSac: item.hsnOrSac || "",
+      qty,
+    }));
+    if (rows.length === 0) return;
+    onAdd(rows);
+    onClose();
+  };
+
+  const selectedList = Object.values(selected);
+  const totalQty = selectedList.reduce((s, { qty }) => s + qty, 0);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
+      PaperProps={{ sx: { borderRadius: "10px", height: "80vh", display: "flex", flexDirection: "column" } }}>
+      <DialogTitle sx={{ fontSize: 16, fontWeight: 700, color: "#111827", py: 1.5, px: 2.5, borderBottom: "1px solid #e3e7ef", flexShrink: 0 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          Add Items in Bulk
+          <IconButton size="small" onClick={onClose}>
+            <X size={18} />
+          </IconButton>
+        </Stack>
+      </DialogTitle>
+
+      <DialogContent sx={{ p: 0, display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        {/* ── Left panel: item search ── */}
+        <Box sx={{ width: "45%", borderRight: "1px solid #e3e7ef", display: "flex", flexDirection: "column", height: "100%" }}>
+          {/* Search */}
+          <Box sx={{ p: 1.5, borderBottom: "1px solid #f3f4f6", flexShrink: 0 }}>
+            <TextField fullWidth size="small" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Type to search or scan the barcode of the item"
+              InputProps={{ startAdornment: <InputAdornment position="start"><Search size={14} color="#9ca3af" /></InputAdornment> }}
+              sx={{ "& .MuiOutlinedInput-root": { fontSize: 13, borderRadius: "6px", height: 36 } }} />
+          </Box>
+
+          {/* Items list */}
+          <Box sx={{ flex: 1, overflowY: "auto" }}>
+            {loading ? (
+              <Stack alignItems="center" sx={{ py: 4 }}><CircularProgress size={22} /></Stack>
+            ) : visible.length === 0 ? (
+              <Typography sx={{ fontSize: 13, color: "#9ca3af", p: 2 }}>
+                {search ? "No items found" : "No items in catalog"}
+              </Typography>
+            ) : (
+              visible.map((item) => {
+                const id = getId(item);
+                const isSel = Boolean(selected[id]);
+                const rate = isPurchase ? (item.purchaseRate || item.salesRate || 0) : (item.salesRate || 0);
+                return (
+                  <Stack key={id} direction="row" alignItems="center" justifyContent="space-between"
+                    onClick={() => toggleItem(item)}
+                    sx={{
+                      px: 2, py: 1.25, cursor: "pointer",
+                      borderBottom: "1px solid #f7f8fb",
+                      bgcolor: isSel ? "#f0fdf4" : "transparent",
+                      "&:hover": { bgcolor: isSel ? "#dcfce7" : "#f7f8fb" },
+                    }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: 13, fontWeight: isSel ? 600 : 400, color: isSel ? "#16a34a" : "#111827" }}>
+                        {item.name}
+                      </Typography>
+                      <Typography sx={{ fontSize: 12, color: "#9ca3af" }}>
+                        Rate: ₹{Number(rate || 0).toLocaleString("en-IN")}
+                        {item.unit ? ` • ${item.unit}` : ""}
+                      </Typography>
+                    </Box>
+                    {isSel && (
+                      <Box sx={{ width: 22, height: 22, borderRadius: "50%", bgcolor: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Typography sx={{ fontSize: 13, color: "#fff", fontWeight: 700, lineHeight: 1 }}>✓</Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                );
+              })
+            )}
+          </Box>
+        </Box>
+
+        {/* ── Right panel: selected items ── */}
+        <Box sx={{ flex: 1, display: "flex", flexDirection: "column", height: "100%" }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between"
+            sx={{ px: 2, py: 1.25, borderBottom: "1px solid #e3e7ef", flexShrink: 0 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>Selected Items</Typography>
+              <Box sx={{ px: 0.75, py: 0.15, borderRadius: "12px", bgcolor: "#eaf2ff", color: "#4088ff", fontSize: 12, fontWeight: 700 }}>
+                {selectedList.length}
+              </Box>
+            </Stack>
+            {totalQty > 0 && (
+              <Typography sx={{ fontSize: 13, color: "#667085" }}>Total Quantity: {totalQty}</Typography>
+            )}
+          </Stack>
+
+          <Box sx={{ flex: 1, overflowY: "auto" }}>
+            {selectedList.length === 0 ? (
+              <Stack alignItems="center" justifyContent="center" sx={{ height: "100%", gap: 1, color: "#9ca3af" }}>
+                <Typography sx={{ fontSize: 13 }}>Select items from the left panel</Typography>
+              </Stack>
+            ) : (
+              selectedList.map(({ item, qty }) => {
+                const id = getId(item);
+                const rate = isPurchase ? (item.purchaseRate || item.salesRate || 0) : (item.salesRate || 0);
+                return (
+                  <Stack key={id} direction="row" alignItems="center" justifyContent="space-between"
+                    sx={{ px: 2, py: 1.25, borderBottom: "1px solid #f3f4f6" }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: 13, fontWeight: 500, color: "#111827" }}>{item.name}</Typography>
+                      <Typography sx={{ fontSize: 12, color: "#9ca3af" }}>₹{Number(rate || 0).toLocaleString("en-IN")}</Typography>
+                    </Box>
+                    {/* Qty controls */}
+                    <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mx: 1.5 }}>
+                      <IconButton size="small" onClick={() => changeQty(id, -1)}
+                        sx={{ width: 26, height: 26, border: "1px solid #e3e7ef", borderRadius: "50%", color: "#374151",
+                          "&:hover": { bgcolor: "#f3f4f6" } }}>
+                        <Typography sx={{ fontSize: 16, lineHeight: 1, fontWeight: 700 }}>−</Typography>
+                      </IconButton>
+                      <TextField size="small" value={qty} onChange={(e) => setQty(id, e.target.value)}
+                        inputProps={{ style: { textAlign: "center", padding: "2px 0", fontSize: 14, fontWeight: 600, width: 36 } }}
+                        sx={{ "& .MuiOutlinedInput-root": { borderRadius: "6px", height: 30, width: 48 },
+                          "& fieldset": { borderColor: "#e3e7ef" } }} />
+                      <IconButton size="small" onClick={() => changeQty(id, 1)}
+                        sx={{ width: 26, height: 26, border: "1px solid #e3e7ef", borderRadius: "50%", color: "#374151",
+                          "&:hover": { bgcolor: "#f3f4f6" } }}>
+                        <Typography sx={{ fontSize: 16, lineHeight: 1, fontWeight: 700 }}>+</Typography>
+                      </IconButton>
+                    </Stack>
+                    {/* Remove */}
+                    <IconButton size="small" onClick={() => removeSelected(id)}
+                      sx={{ color: "#f87171", "&:hover": { bgcolor: "#fff1f2" }, width: 26, height: 26 }}>
+                      <X size={14} />
+                    </IconButton>
+                  </Stack>
+                );
+              })
+            )}
+          </Box>
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 2.5, py: 1.5, borderTop: "1px solid #e3e7ef", gap: 1, flexShrink: 0 }}>
+        <Typography sx={{ fontSize: 12, color: "#9ca3af", flex: 1, mr: 2 }}>
+          Additional Fields: Add custom fields to your sales orders by going to Settings → Sales → Sales Orders → Field Customization.
+        </Typography>
+        <Button variant="primary" onClick={handleAdd} disabled={selectedList.length === 0}
+          style={{ height: 34, padding: "0 20px", fontSize: 13 }}>
+          Add Items
+        </Button>
+        <Button variant="outline" onClick={onClose}
+          style={{ height: 34, padding: "0 16px", fontSize: 13 }}>
+          Cancel
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export default function ZohoFormPage({ mode = "sales-order" }) {
   const cfg = CONFIG[mode] || CONFIG["sales-order"];
   const navigate = useNavigate();
@@ -598,6 +833,27 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
     setItems((prev) =>
       prev.length > 1 ? prev.filter((item) => item.id !== id) : prev
     );
+  };
+
+  // ── Add Items in Bulk ──────────────────────────────────────────────────────
+  const [bulkOpen, setBulkOpen] = useState(false);
+
+  const addBulkItems = (selectedItems) => {
+    // selectedItems: [{ _id, name, salesRate, purchaseRate, itemType, unit, hsnOrSac, qty }]
+    const newRows = selectedItems.map((si) => ({
+      id: typeof crypto !== "undefined" && crypto?.randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now() + Math.random()),
+      itemDetails: si.name || si.itemDetails || "",
+      quantity: String(si.qty || 1),
+      rate: String(isPurchase ? (si.purchaseRate || si.salesRate || 0) : (si.salesRate || 0)),
+      discount: "0",
+    }));
+    setItems((prev) => {
+      // Remove placeholder empty rows first
+      const nonEmpty = prev.filter((r) => r.itemDetails || Number(r.rate) > 0 || Number(r.quantity) !== 1);
+      return nonEmpty.length > 0 ? [...nonEmpty, ...newRows] : newRows;
+    });
   };
 
   const loadParties = useCallback(async () => {
@@ -744,7 +1000,15 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
     ...buildCommonApiPayload(payload),
     orderDate: payload.date,
     expectedShipmentDate: payload.shipment || null,
+    deliveryMethod: payload.deliveryMethod || "",
     status: apiOrderStatusFromUiStatus(payload.status),
+    items: (payload.items || []).map((item) => ({
+      itemDetails: item.itemDetails || "",
+      quantity: Number(item.quantity) || 1,
+      rate: Number(item.rate) || 0,
+      discount: Number(item.discount) || 0,
+      amount: item.amount || 0,
+    })),
   });
 
   const buildInvoiceApiPayload = (payload) => ({
@@ -1155,6 +1419,14 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
                 >
                   Item Table
                 </Typography>
+                <Button
+                  variant="outline"
+                  startIcon={<Plus size={14} />}
+                  onClick={() => setBulkOpen(true)}
+                  style={{ height: 30, fontSize: 12, padding: "0 10px" }}
+                >
+                  Add Product
+                </Button>
               </Stack>
 
               <TableContainer sx={{ width: "100%", overflowX: "auto" }}>
@@ -1468,6 +1740,13 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
             </Box>
           </Typography>
         </Box>
+
+        <BulkItemModal
+          open={bulkOpen}
+          onClose={() => setBulkOpen(false)}
+          onAdd={addBulkItems}
+          isPurchase={isPurchase}
+        />
 
         <ConfirmationDialog
           open={discard}

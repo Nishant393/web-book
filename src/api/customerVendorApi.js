@@ -26,8 +26,8 @@ function apiPath(path) {
 function getAuthToken() {
   try {
     return (
-      localStorage.getItem("book_token") ||
-      sessionStorage.getItem("book_token") ||
+      localStorage.getItem("crm_token") ||
+      sessionStorage.getItem("crm_token") ||
       localStorage.getItem("token") ||
       sessionStorage.getItem("token") ||
       localStorage.getItem("accessToken") ||
@@ -301,6 +301,48 @@ export const billApi = {
 
   delete: (billId) =>
     customerVendorAxios.delete(apiPath(`/api/bills/${billId}`)).then(unwrap),
+};
+
+export const proformaInvoiceApi = {
+  list: (params = {}) =>
+    customerVendorAxios.get(apiPath("/api/proforma-invoices"), { params }).then(unwrap),
+
+  listAll: (params = {}) => listAll("/api/proforma-invoices", params),
+
+  getById: (proformaId) =>
+    customerVendorAxios.get(apiPath(`/api/proforma-invoices/${proformaId}`)).then(unwrap),
+
+  update: (proformaId, payload) =>
+    customerVendorAxios.put(apiPath(`/api/proforma-invoices/${proformaId}`), payload).then(unwrap),
+
+  recordPayment: (proformaId, payload) =>
+    customerVendorAxios.post(apiPath(`/api/proforma-invoices/${proformaId}/record-payment`), payload).then(unwrap),
+
+  convertToTaxInvoice: (proformaId) =>
+    customerVendorAxios.post(apiPath(`/api/proforma-invoices/${proformaId}/convert-to-tax-invoice`)).then(unwrap),
+};
+
+export const paymentApi = {
+  list: (params = {}) =>
+    customerVendorAxios.get(apiPath("/api/payments"), { params }).then(unwrap),
+
+  getById: (paymentId) =>
+    customerVendorAxios.get(apiPath(`/api/payments/${paymentId}`)).then(unwrap),
+
+  create: (payload) =>
+    customerVendorAxios.post(apiPath("/api/payments"), payload).then(unwrap),
+};
+
+// Extended sales order API with new cycle actions
+export const salesOrderCycleApi = {
+  convertToProforma: (orderId) =>
+    customerVendorAxios.post(apiPath(`/api/sales-orders/${orderId}/convert-to-proforma`)).then(unwrap),
+
+  createDeliveryChallan: (orderId, payload) =>
+    customerVendorAxios.post(apiPath(`/api/sales-orders/${orderId}/create-delivery-challan`), payload).then(unwrap),
+
+  createInstallationChallan: (orderId, payload) =>
+    customerVendorAxios.post(apiPath(`/api/sales-orders/${orderId}/create-installation-challan`), payload).then(unwrap),
 };
 const SEND_MEDIA_URL =
   normalizeBaseUrl(import.meta.env.VITE_SEND_MEDIA_URL) ||

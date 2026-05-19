@@ -10,7 +10,7 @@ export default function DataTable({
   loading = false,
   loadingText = "Loading...",
   onRowClick,
-  minWidth = 900,
+  minWidth,
   dense = false,
   stickyHeader = false,
 }) {
@@ -22,12 +22,13 @@ export default function DataTable({
         borderRadius: "6px",
         overflowX: "auto",
         overflowY: "hidden",
-        border: "1px solid #e3e7ef",
+        border: "none",
         bgcolor: "#fff",
         boxShadow: "none",
+        width: "100%",
       }}
     >
-      <Table size="small" stickyHeader={stickyHeader} sx={{ minWidth, tableLayout: "auto" }}>
+      <Table size="small" stickyHeader={stickyHeader} sx={{ minWidth: minWidth || "100%", tableLayout: minWidth ? "auto" : "fixed", width: "100%" }}>
         <TableHead>
           <TableRow>
             {columns.map((column) => (
