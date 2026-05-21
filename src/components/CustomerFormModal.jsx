@@ -1,7 +1,4 @@
-/**
- * CustomerFormModal — handles both customer (default) and vendor forms.
- * Pass type="vendor" to switch to vendor mode.
- */
+
 import React, { useEffect, useRef, useState } from "react";
 import {
   Box,

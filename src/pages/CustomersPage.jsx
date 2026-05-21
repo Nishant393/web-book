@@ -358,13 +358,27 @@ export default function CustomersPage() {
       key: "receivable",
       header: "Receivable",
       align: "right",
-      render: (row) => money(row?.summary?.remainingPayment || row.remainingPayment || 0),
+      render: (row) => (
+        <Box sx={{ textAlign: "right" }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 600, color: "#d97706" }}>
+            {money(row?.summary?.receivableAmount ?? 0)}
+          </Typography>
+          <Typography sx={{ fontSize: 11, color: "#94a3b8" }}>Sent / Partial</Typography>
+        </Box>
+      ),
     },
     {
-      key: "received",
-      header: "Received",
+      key: "unusedCredits",
+      header: "Unused Credits",
       align: "right",
-      render: (row) => money(row?.summary?.totalPaymentReceived || row.totalPaymentReceived || 0),
+      render: (row) => (
+        <Box sx={{ textAlign: "right" }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 600, color: "#16a34a" }}>
+            {money(row?.summary?.unusedCredits ?? row?.customerCreditBalance ?? 0)}
+          </Typography>
+          <Typography sx={{ fontSize: 11, color: "#94a3b8" }}>Available</Typography>
+        </Box>
+      ),
     },
     {
       key: "status",

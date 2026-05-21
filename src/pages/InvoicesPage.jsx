@@ -19,7 +19,7 @@ import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 
 import AppShell from "../components/AppShell";
 import Button from "../components/Button";
-import { salesOrderApi } from "../api/customerVendorApi";
+import { invoiceApi } from "../api/customerVendorApi";
 import { formatDate, formatMoney } from "../components/DocumentPdfPreview";
 
 const pickData = (v) => v?.data || v?.result || v || {};
@@ -37,20 +37,16 @@ const partyName = (row) => {
   if (c && typeof c === "object") return c.displayName || c.customerName || c.companyName || c.name || "—";
   return row?.customerSnapshot?.name || "—";
 };
-const normalizedStatus = (status) => {
-  if (status === "CONFIRMED") return "ISSUED";
-  return status || "DRAFT";
-};
 const statusColor = (status) => {
-  const s = normalizedStatus(status);
-  if (s === "DRAFT") return "#6b7280";
-  if (s === "ISSUED") return "#2563eb";
-  if (s === "CLOSED") return "#16a34a";
-  if (s === "CANCELLED") return "#dc2626";
+  if (status === "DRAFT") return "#6b7280";
+  if (status === "SENT") return "#2563eb";
+  if (status === "PARTIALLY_PAID") return "#d97706";
+  if (status === "PAID") return "#16a34a";
+  if (status === "CANCELLED") return "#dc2626";
   return "#64748b";
 };
 
-export default function SalesOrdersPage() {
+export default function InvoicesPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -60,11 +56,11 @@ export default function SalesOrdersPage() {
   const loadRows = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await salesOrderApi.list({ limit: 500 });
+      const res = await invoiceApi.list({ limit: 500 });
       const data = pickData(res);
       setRows(safeArray(data.items || data));
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Failed to load sales orders");
+      toast.error(error?.response?.data?.message || "Failed to load invoices");
     } finally {
       setLoading(false);
     }
@@ -77,12 +73,11 @@ export default function SalesOrdersPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
-      const status = normalizedStatus(row.status);
-      if (filter !== "ALL" && status !== filter) return false;
+      if (filter !== "ALL" && row.status !== filter) return false;
       if (!q) return true;
       return (
+        String(row.invoiceNumber || "").toLowerCase().includes(q) ||
         String(row.salesOrderNumber || "").toLowerCase().includes(q) ||
-        String(row.referenceNumber || "").toLowerCase().includes(q) ||
         partyName(row).toLowerCase().includes(q)
       );
     });
@@ -93,19 +88,19 @@ export default function SalesOrdersPage() {
       <Box sx={{ height: "100%", display: "flex", flexDirection: "column", bgcolor: "#fff" }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ height: 57, px: 2.2, borderBottom: "1px solid #e5e7eb", flexShrink: 0 }}>
           <Stack direction="row" alignItems="center" spacing={0.7}>
-            <Typography sx={{ fontSize: 17, fontWeight: 700 }}>All Sales Orders</Typography>
+            <Typography sx={{ fontSize: 17, fontWeight: 700 }}>All Invoices</Typography>
             <ExpandMoreRoundedIcon sx={{ fontSize: 18, color: "#2563eb" }} />
           </Stack>
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
               size="small"
-              placeholder="Search sales orders"
+              placeholder="Search invoices"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchRoundedIcon sx={{ fontSize: 16 }} /></InputAdornment> }}
               sx={{ width: 230, "& .MuiOutlinedInput-root": { height: 34, fontSize: 13, borderRadius: "6px" } }}
             />
-            <Button onClick={() => navigate("/sales-orders/new")} sx={{ minWidth: 38, height: 34, px: 1 }}>
+            <Button onClick={() => navigate("/invoices/new")} sx={{ minWidth: 38, height: 34, px: 1 }}>
               <AddRoundedIcon sx={{ fontSize: 18 }} />
             </Button>
             <IconButton onClick={loadRows} sx={{ border: "1px solid #d7dce8", width: 34, height: 34, borderRadius: "6px" }}>
@@ -115,10 +110,10 @@ export default function SalesOrdersPage() {
         </Stack>
 
         <Stack direction="row" spacing={1} sx={{ px: 2, py: 1.2, borderBottom: "1px solid #edf0f6", flexShrink: 0 }}>
-          {["ALL", "DRAFT", "ISSUED", "CLOSED"].map((s) => (
+          {["ALL", "DRAFT", "SENT", "PARTIALLY_PAID", "PAID"].map((s) => (
             <Chip
               key={s}
-              label={s === "ALL" ? `All (${rows.length})` : s}
+              label={s === "ALL" ? `All (${rows.length})` : s === "PARTIALLY_PAID" ? "PARTIAL" : s}
               clickable
               onClick={() => setFilter(s)}
               sx={{ height: 28, borderRadius: "14px", bgcolor: filter === s ? "#4088ff" : "#fff", color: filter === s ? "#fff" : "#344054", border: "1px solid #e3e7ef", fontSize: 12 }}
@@ -130,33 +125,32 @@ export default function SalesOrdersPage() {
           {loading ? (
             <Box sx={{ height: 240, display: "grid", placeItems: "center" }}><CircularProgress size={26} /></Box>
           ) : (
-            <Box sx={{ minWidth: 1040 }}>
+            <Box sx={{ minWidth: 1060 }}>
               <Box sx={{ display: "grid", gridTemplateColumns: "46px 1.3fr 0.9fr 0.9fr 0.8fr 0.8fr 0.9fr 0.8fr", bgcolor: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
-                {["", "Customer", "Sales Order#", "Date", "Amount", "Invoice", "Status", "Action"].map((h) => (
+                {["", "Customer", "Invoice#", "Date", "Amount", "Balance", "Status", "Action"].map((h) => (
                   <Typography key={h} sx={{ px: 2, py: 1.2, fontSize: 11, color: "#667085", fontWeight: 700, textTransform: "uppercase" }}>{h}</Typography>
                 ))}
               </Box>
               {filtered.map((row) => {
                 const id = getId(row);
-                const status = normalizedStatus(row.status);
-                const invoice = row.convertedInvoiceId;
+                const balance = row.balanceAmount ?? row.totalAmount;
                 return (
-                  <Box key={id} onClick={() => navigate(`/sales-orders/${id}`)} sx={{ display: "grid", gridTemplateColumns: "46px 1.3fr 0.9fr 0.9fr 0.8fr 0.8fr 0.9fr 0.8fr", alignItems: "center", borderBottom: "1px solid #edf0f6", cursor: "pointer", bgcolor: "#fff", "&:hover": { bgcolor: "#f8fbff" } }}>
+                  <Box key={id} onClick={() => navigate(`/invoices/${id}`)} sx={{ display: "grid", gridTemplateColumns: "46px 1.3fr 0.9fr 0.9fr 0.8fr 0.8fr 0.9fr 0.8fr", alignItems: "center", borderBottom: "1px solid #edf0f6", cursor: "pointer", bgcolor: "#fff", "&:hover": { bgcolor: "#f8fbff" } }}>
                     <Box sx={{ px: 2 }}><Checkbox size="small" /></Box>
                     <Box sx={{ px: 2, py: 1.1 }}>
                       <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{partyName(row)}</Typography>
-                      <Typography sx={{ fontSize: 12, color: "#667085" }}>{row.referenceNumber || "No reference"}</Typography>
+                      <Typography sx={{ fontSize: 12, color: "#667085" }}>{row.salesOrderNumber || "No reference"}</Typography>
                     </Box>
-                    <Typography sx={{ px: 2, fontSize: 13, color: "#1d4ed8", fontWeight: 600 }}>{row.salesOrderNumber || "—"}</Typography>
-                    <Typography sx={{ px: 2, fontSize: 13 }}>{formatDate(row.orderDate)}</Typography>
+                    <Typography sx={{ px: 2, fontSize: 13, color: "#1d4ed8", fontWeight: 600 }}>{row.invoiceNumber || "—"}</Typography>
+                    <Typography sx={{ px: 2, fontSize: 13 }}>{formatDate(row.invoiceDate)}</Typography>
                     <Typography sx={{ px: 2, fontSize: 13, fontWeight: 700 }}>{formatMoney(row.totalAmount)}</Typography>
-                    <Typography sx={{ px: 2, fontSize: 12, color: invoice ? "#2563eb" : "#94a3b8" }}>{invoice?.invoiceNumber || (invoice ? "Created" : "Not Created")}</Typography>
-                    <Typography sx={{ px: 2, fontSize: 12, fontWeight: 700, color: statusColor(status) }}>{status}</Typography>
-                    <Box sx={{ px: 2 }}><Button variant="outline" sx={{ height: 28, fontSize: 12 }} onClick={(e) => { e.stopPropagation(); navigate(`/sales-orders/${id}`); }}>View</Button></Box>
+                    <Typography sx={{ px: 2, fontSize: 13, color: Number(balance) > 0 ? "#d97706" : "#16a34a" }}>{formatMoney(balance)}</Typography>
+                    <Typography sx={{ px: 2, fontSize: 12, fontWeight: 700, color: statusColor(row.status) }}>{row.status || "DRAFT"}</Typography>
+                    <Box sx={{ px: 2 }}><Button variant="outline" sx={{ height: 28, fontSize: 12 }} onClick={(e) => { e.stopPropagation(); navigate(`/invoices/${id}`); }}>View</Button></Box>
                   </Box>
                 );
               })}
-              {!filtered.length ? <Box sx={{ py: 8, textAlign: "center", color: "#94a3b8" }}>No sales orders found</Box> : null}
+              {!filtered.length ? <Box sx={{ py: 8, textAlign: "center", color: "#94a3b8" }}>No invoices found</Box> : null}
             </Box>
           )}
         </Box>

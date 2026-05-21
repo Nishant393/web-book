@@ -15,7 +15,8 @@ import ItemsPage from "./pages/ItemsPage";
 import ItemDetailPage from "./pages/ItemDetailPage";
 import SalesOrdersPage from "./pages/SalesOrdersPage";
 import SalesOrderDetailPage from "./pages/SalesOrderDetailPage";
-import ProformaInvoiceDetailPage from "./pages/ProformaInvoiceDetailPage";
+import InvoicesPage from "./pages/InvoicesPage";
+import InvoiceDetailPage from "./pages/InvoiceDetailPage";
 import ZohoFormPage from "./pages/ZohoFormPage";
 import SimpleModulePage from "./pages/SimpleModulePage";
 import RequireAuth from "./auth/RequireAuth";
@@ -49,10 +50,14 @@ export default function App() {
 
           <Route path="/sales-orders" element={<Protected><SalesOrdersPage /></Protected>} />
           <Route path="/sales-orders/new" element={<Protected><ZohoFormPage mode="sales-order" /></Protected>} />
+          <Route path="/sales-orders/:orderId/edit" element={<Protected><ZohoFormPage mode="sales-order" edit /></Protected>} />
           <Route path="/sales-orders/:orderId" element={<Protected><SalesOrderDetailPage /></Protected>} />
-          <Route path="/proforma-invoices/:proformaId" element={<Protected><ProformaInvoiceDetailPage /></Protected>} />
-          <Route path="/invoices" element={<Protected><SimpleModulePage title="Invoices" button="New Invoice" /></Protected>} />
+
+          <Route path="/invoices" element={<Protected><InvoicesPage /></Protected>} />
           <Route path="/invoices/new" element={<Protected><ZohoFormPage mode="invoice" /></Protected>} />
+          <Route path="/invoices/:invoiceId/edit" element={<Protected><ZohoFormPage mode="invoice" edit /></Protected>} />
+          <Route path="/invoices/:invoiceId" element={<Protected><InvoiceDetailPage /></Protected>} />
+          <Route path="/proforma-invoices/:proformaId" element={<Navigate to="/invoices" replace />} />
           <Route path="/download-receipt" element={<Protected><SimpleModulePage title="Download Receipt" button="Download" /></Protected>} />
 
           <Route path="/purchase-orders" element={<Protected><SimpleModulePage title="Purchase Orders" button="New Purchase Order" /></Protected>} />
@@ -63,7 +68,8 @@ export default function App() {
           <Route path="/expenses/new" element={<Protected><ZohoFormPage mode="expense" /></Protected>} />
           <Route path="/reports" element={<Protected><SimpleModulePage title="Reports" button="Create Report" /></Protected>} />
           <Route path="/documents" element={<Protected><SimpleModulePage title="Documents" button="Upload Document" /></Protected>} />
-<Route path="/send-email" element={<SendEmailPage />} />
+          <Route path="/send-email" element={<Protected><SendEmailPage /></Protected>} />
+
           <Route path="/statements" element={<Navigate to="/banks" replace />} />
           <Route path="/bank-statements" element={<Navigate to="/banks" replace />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

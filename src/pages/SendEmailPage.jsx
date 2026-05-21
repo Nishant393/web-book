@@ -26,6 +26,7 @@ import {
   sendMediaApi,
 } from "../api/customerVendorApi";
 import { money } from "./businessUtils.jsx";
+import { createDocumentPdfFile, documentTitle } from "../components/DocumentPdfPreview";
 
 const DOC_CONFIG = {
   "sales-order": {
@@ -47,7 +48,7 @@ const DOC_CONFIG = {
     filePrefix: "Purchase-Order",
   },
   invoice: {
-    title: "TAX INVOICE",
+    title: "PROFORMA INVOICE",
     label: "Invoice",
     api: invoiceApi,
     recordKey: "invoice",
@@ -548,16 +549,11 @@ export default function SendEmailPage() {
     setSending(true);
 
     try {
-      const pdfBlob = makePdfBlob({
-        cfg,
-        document: documentData,
-        cacheData,
-        partyName,
-        partyEmail: to,
-      });
-
-      const pdfFile = new File([pdfBlob], fileName, {
-        type: "application/pdf",
+      const pdfFile = createDocumentPdfFile({
+        type,
+        doc: documentData,
+        title: type === "invoice" ? documentTitle("invoice", documentData) : cfg.title,
+        fileName,
       });
 
       const formData = new FormData();

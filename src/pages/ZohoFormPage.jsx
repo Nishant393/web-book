@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Box,
   CircularProgress,
@@ -56,6 +56,7 @@ import { saveDocument } from "../utils/documentStore";
 const CONFIG = {
   "sales-order": {
     title: "New Sales Order",
+    editTitle: "Edit Sales Order",
     party: "Customer Name",
     partyPlaceholder: "Select or add a customer",
     no: "Sales Order#",
@@ -73,6 +74,7 @@ const CONFIG = {
   },
   invoice: {
     title: "New Invoice",
+    editTitle: "Edit Invoice",
     party: "Customer Name",
     partyPlaceholder: "Select or add a customer",
     no: "Invoice#",
@@ -775,12 +777,15 @@ function BulkItemModal({ open, onClose, onAdd, isPurchase }) {
   );
 }
 
-export default function ZohoFormPage({ mode = "sales-order" }) {
+export default function ZohoFormPage({ mode = "sales-order", edit = false }) {
   const cfg = CONFIG[mode] || CONFIG["sales-order"];
   const navigate = useNavigate();
+  const { orderId, invoiceId } = useParams();
+  const editId = orderId || invoiceId || "";
 
   const [saving, setSaving] = useState(false);
   const [discard, setDiscard] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
 
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -888,6 +893,7 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
   }, [loadParties]);
 
   useEffect(() => {
+    if (edit) return;
     setForm((prev) => ({
       ...prev,
       number: cfg.noValue,
@@ -898,7 +904,61 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
       taxPercent: "0",
       adjustment: "0",
     }));
-  }, [cfg.noValue, mode]);
+  }, [cfg.noValue, edit, mode]);
+
+  useEffect(() => {
+    if (!edit || !editId) return;
+    setEditLoading(true);
+    const load = async () => {
+      try {
+        let res;
+        if (mode === "sales-order") res = await salesOrderApi.getById(editId);
+        else if (mode === "invoice") res = await invoiceApi.getById(editId);
+        else return;
+        const data = pickData(res);
+        const doc = data.order || data.invoice || data;
+        const custObj = doc.customerId && typeof doc.customerId === "object" ? doc.customerId : null;
+        const custId = custObj ? (custObj._id || custObj.id || "") : (typeof doc.customerId === "string" ? doc.customerId : "");
+        const custName = custObj ? partyNameOf(custObj, isPurchase) : (doc.customerSnapshot?.name || doc.vendorSnapshot?.name || "");
+        const hasTds = Number(doc.tdsPercent || 0) > 0;
+        const hasTcs = Number(doc.tcsPercent || 0) > 0;
+        setForm({
+          party: custId,
+          partyName: custName,
+          currency: "INR",
+          number: doc.salesOrderNumber || doc.invoiceNumber || "",
+          reference: doc.referenceNumber || "",
+          date: (doc.orderDate || doc.invoiceDate || today()).slice(0, 10),
+          expectedShipmentDate: doc.expectedShipmentDate ? doc.expectedShipmentDate.slice(0, 10) : "",
+          dueDate: doc.dueDate ? doc.dueDate.slice(0, 10) : today(),
+          paymentTerms: doc.paymentTerms || "Due on Receipt",
+          deliveryMethod: doc.deliveryMethod || "",
+          salesperson: doc.salesperson || "",
+          subject: doc.subject || "",
+          reportingTags: "",
+          notes: doc.description || doc.remarks || doc.notes || "",
+          gstPercent: String(doc.gstPercent || "0"),
+          taxMode: hasTds ? "TDS" : hasTcs ? "TCS" : "TDS",
+          taxPercent: String(hasTds ? (doc.tdsPercent || "0") : hasTcs ? (doc.tcsPercent || "0") : "0"),
+          adjustment: String(doc.adjustmentAmount || "0"),
+        });
+        if (doc.items && doc.items.length > 0) {
+          setItems(doc.items.map((item) => ({
+            id: typeof crypto !== "undefined" && crypto?.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+            itemDetails: item.itemDetails || item.name || "",
+            quantity: String(item.quantity ?? "1"),
+            rate: String(item.rate ?? "0"),
+            discount: String(item.discount ?? "0"),
+          })));
+        }
+      } catch (err) {
+        toast.error("Failed to load document for editing");
+      } finally {
+        setEditLoading(false);
+      }
+    };
+    load();
+  }, [edit, editId, mode, isPurchase]);
 
   const partyOptions = useMemo(() => {
     if (!needsPartyList) return [];
@@ -1017,6 +1077,7 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
     dueDate: payload.due || null,
     paidAmount: 0,
     status: apiInvoiceStatusFromUiStatus(payload.status),
+    invoiceType: "PROFORMA_INVOICE",
   });
 
   const buildBillApiPayload = (payload) => ({
@@ -1029,31 +1090,23 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
 
   const persistDocument = async (payload) => {
     if (mode === "sales-order") {
-      return salesOrderApi.create({
-        ...buildOrderApiPayload(payload),
-        customerId: payload.partyId,
-      });
+      const body = { ...buildOrderApiPayload(payload), customerId: payload.partyId };
+      return edit && editId ? salesOrderApi.update(editId, body) : salesOrderApi.create(body);
     }
 
     if (mode === "purchase-order") {
-      return purchaseOrderApi.create({
-        ...buildOrderApiPayload(payload),
-        vendorId: payload.partyId,
-      });
+      const body = { ...buildOrderApiPayload(payload), vendorId: payload.partyId };
+      return edit && editId ? purchaseOrderApi.update(editId, body) : purchaseOrderApi.create(body);
     }
 
     if (mode === "invoice") {
-      return invoiceApi.create({
-        ...buildInvoiceApiPayload(payload),
-        customerId: payload.partyId,
-      });
+      const body = { ...buildInvoiceApiPayload(payload), customerId: payload.partyId };
+      return edit && editId ? invoiceApi.update(editId, body) : invoiceApi.create(body);
     }
 
     if (mode === "bill") {
-      return billApi.create({
-        ...buildBillApiPayload(payload),
-        vendorId: payload.partyId,
-      });
+      const body = { ...buildBillApiPayload(payload), vendorId: payload.partyId };
+      return edit && editId ? billApi.update(editId, body) : billApi.create(body);
     }
 
     return saveDocument(payload);
@@ -1150,7 +1203,13 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
 
       const saveResponse = await persistDocument(payload);
 
-      toast.success(`${cfg.module.slice(0, -1)} saved successfully`);
+      toast.success(`${cfg.module.slice(0, -1)} ${edit ? "updated" : "saved"} successfully`);
+
+      if (edit && editId) {
+        const detailPath = mode === "sales-order" ? `/sales-orders/${editId}` : mode === "invoice" ? `/invoices/${editId}` : cfg.listPath;
+        navigate(detailPath);
+        return;
+      }
 
       if (shouldSend && SENDABLE_MODES.has(mode)) {
         const createdDocument = pickCreatedDocument(saveResponse, mode);
@@ -1226,6 +1285,9 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
       <HistoricalUiStyles />
 
       <ZohoPage sx={{ p: 0, pb: 8, bgcolor: "#fff" }}>
+        {editLoading ? (
+          <Box sx={{ height: 300, display: "grid", placeItems: "center" }}><CircularProgress /></Box>
+        ) : null}
         <Box
           sx={{
             height: 66,
@@ -1244,7 +1306,7 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
             <Typography
               sx={{ fontSize: 24, fontWeight: 400, color: "#111827" }}
             >
-              {cfg.title}
+              {edit ? (cfg.editTitle || cfg.title) : cfg.title}
             </Typography>
           </Stack>
 
@@ -1711,8 +1773,8 @@ export default function ZohoFormPage({ mode = "sales-order" }) {
           }}
         >
           <Stack direction="row" spacing={1}>
-            <Button disabled={saving} onClick={() => handleSave("Saved", false)}>
-              {saving ? "Saving..." : "Save"}
+            <Button disabled={saving} onClick={() => handleSave("Draft", false)}>
+              {saving ? "Saving..." : "Save as Draft"}
             </Button>
 
             <Button

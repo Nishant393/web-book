@@ -5,12 +5,12 @@ import { Box, Checkbox, Grid, IconButton, Paper, Stack, Tab, Tabs, Typography, u
 import { ArrowLeft, Building2, ChevronDown, Edit, FileText, MoreHorizontal, Plus, Settings, Trash2, Upload } from "lucide-react";
 import AppShell from "../components/AppShell";
 import Button from "../components/Button";
-import CustomerFormModal from "../components/CustomerFormModal";
+import {CustomerFormModal} from "../components/customerForm/index.js";
 import IFSCField from "../components/IFSCField";
 import DataTable from "../components/DataTable";
 import Modal from "../components/Modal";
 import ConfirmationDialog from "../components/ConfirmationDialog";
-import { customerApi, vendorApi } from "../api/customerVendorApi";
+import { customerApi, vendorApi, invoiceApi, paymentApi } from "../api/customerVendorApi";
 import { HistoricalUiStyles } from "../styles/powerUi";
 import { Card, FormField, InfoRow, Label, MiniMonthBars, ProgressMoney, SectionTitle, dateText, getId, makeLastMonths, money, pickData, safeArray } from "./businessUtils.jsx";
 
@@ -105,16 +105,32 @@ export default function BusinessDetailPage({ type }) {
   const [orderForm, setOrderForm] = useState(emptyOrder);
   const [docForm, setDocForm] = useState(emptyDoc);
   const [bankForm, setBankForm] = useState(emptyBank);
+  const [invoices, setInvoices] = useState([]);
+  const [customerPayments, setCustomerPayments] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [res, list] = await Promise.all([cfg.api.getById(id), cfg.api.listAll ? cfg.api.listAll() : cfg.api.list({ limit: 1000 })]);
+      const basePromises = [
+        cfg.api.getById(id),
+        cfg.api.listAll ? cfg.api.listAll() : cfg.api.list({ limit: 1000 }),
+      ];
+      const extraPromises = type === "customer" ? [
+        invoiceApi.list({ customerId: id, limit: 500 }),
+        paymentApi.listByCustomer(id, { limit: 200 }),
+      ] : [];
+      const [res, list, invRes, payRes] = await Promise.all([...basePromises, ...extraPromises]);
       setDetail(pickData(res));
       setItems(safeArray(pickData(list).items || pickData(list)));
+      if (type === "customer") {
+        const invData = pickData(invRes);
+        setInvoices(safeArray(invData.items || invData));
+        const payData = pickData(payRes);
+        setCustomerPayments(safeArray(payData.items || payData.payments || payData));
+      }
     } catch (e) { toast.error(e?.response?.data?.message || `Failed to load ${cfg.entityLabel}`); }
     finally { setLoading(false); }
-  }, [cfg, id]);
+  }, [cfg, id, type]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -123,6 +139,23 @@ export default function BusinessDetailPage({ type }) {
   const orders = safeArray(detail?.[cfg.orderListKey]);
   const txns = safeArray(detail?.paymentTransactions);
   const documents = safeArray(entity?.documents);
+
+  // Both values come directly from the backend summary — no frontend computation
+  const receivableAmount = Number(summary?.receivableAmount ?? 0);
+  const unusedCredits    = Number(summary?.unusedCredits ?? 0);
+
+  // Bank deposits linked to this customer — the source of customer credits
+  const bankCreditTxns = safeArray(detail?.bankTransactions);
+
+  // Payments that consumed customer credit (applied credit → invoice)
+  const creditApplied = safeArray(detail?.paymentTransactions).filter((p) => p.paymentMode === "CUSTOMER_CREDIT");
+
+  // Delivery challans extracted from sales orders
+  const challans = orders.flatMap((so) => {
+    const challan = so.deliveryChallan || so.challan;
+    if (!challan) return [];
+    return [{ ...challan, salesOrderNumber: so.salesOrderNumber, salesOrderId: getId(so) }];
+  });
   const bankAccounts = safeArray(entity?.bankAccounts);
 
   const trend = useMemo(() => {
@@ -529,14 +562,168 @@ export default function BusinessDetailPage({ type }) {
           </Grid>
           <Grid item xs={12} md={8} sx={{ p: 2.5 }}>
             <Card title={cfg.remainingLabel} bodySx={{ p: 0 }}>
-              <Box sx={{ p: 2 }}><Grid container spacing={2}><Grid item xs={12} md={4}><Typography sx={{ fontSize: 12, color: "#697386" }}>Currency</Typography><Typography sx={{ fontSize: 14 }}>INR - Indian Rupee</Typography></Grid><Grid item xs={12} md={4}><Typography sx={{ fontSize: 12, color: "#697386" }}>Outstanding {cfg.remainingLabel}</Typography><Typography sx={{ fontSize: 14 }}>{money(summary.remainingPayment)}</Typography></Grid><Grid item xs={12} md={4}><Typography sx={{ fontSize: 12, color: "#697386" }}>Unused Credits</Typography><Typography sx={{ fontSize: 14 }}>{money(0)}</Typography></Grid></Grid><Box sx={{ mt: 2 }}><ProgressMoney total={total} paid={paid} paidLabel={cfg.paidLabel} remainingLabel={cfg.remainingLabel} /></Box></Box>
+              <Box sx={{ p: 2 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Typography sx={{ fontSize: 12, color: "#697386" }}>Currency</Typography>
+                    <Typography sx={{ fontSize: 14 }}>INR - Indian Rupee</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography sx={{ fontSize: 12, color: "#697386" }}>
+                      {type === "customer" ? "Receivable (Sent invoices)" : `Outstanding ${cfg.remainingLabel}`}
+                    </Typography>
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#d97706" }}>
+                      {type === "customer" ? money(receivableAmount) : money(summary.remainingPayment)}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography sx={{ fontSize: 12, color: "#697386" }}>Unused Credits</Typography>
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#16a34a" }}>{money(unusedCredits)}</Typography>
+                  </Grid>
+                </Grid>
+                <Box sx={{ mt: 2 }}>
+                  <ProgressMoney total={total} paid={paid} paidLabel={cfg.paidLabel} remainingLabel={cfg.remainingLabel} />
+                </Box>
+              </Box>
             </Card>
             <Box sx={{ mt: 2 }}><Typography sx={{ fontSize: 17, fontWeight: 500 }}>{type === "customer" ? "Income" : "Expenses"} <Typography component="span" sx={{ fontSize: 12, color: "#667085", ml: 1 }}>This chart is displayed in the organization base currency.</Typography></Typography><MiniMonthBars data={trend} orderKey="orders" payKey="payments" /><Typography sx={{ fontSize: 13, mt: 1 }}>Total {type === "customer" ? "Income" : "Expenses"} - <b>{money(total)}</b></Typography></Box>
             <Box sx={{ mt: 3 }}><DataTable columns={orderColumns} rows={orders} emptyText={`No ${cfg.orderPlural.toLowerCase()} found`} minWidth={900} stickyHeader /></Box>
           </Grid>
         </Grid> : null}
 
-        {tab === 1 ? <Box sx={{ p: 2.5 }}><Typography sx={{ fontSize: 17, fontWeight: 500, mb: 2 }}>Go to transactions</Typography><Card title={cfg.orderPlural} action={<Button variant="text" icon={Plus} onClick={() => setOrderModal(true)}>New</Button>} bodySx={{ p: 0 }}><DataTable columns={orderColumns} rows={orders} emptyText={`There are no ${cfg.orderPlural}`} minWidth={900} stickyHeader /></Card><Box sx={{ mt: 2 }}><Card title={cfg.paymentTableTitle} bodySx={{ p: 0 }}><DataTable columns={txnColumns} rows={txns} emptyText={type === "customer" ? "No payments have been received or recorded yet." : "No payments made yet."} minWidth={1000} stickyHeader /></Card></Box></Box> : null}
+        {tab === 1 ? (
+          <Box sx={{ p: 2.5 }}>
+            {/* Sales Orders */}
+            <Card title="Sales Orders" bodySx={{ p: 0 }} sx={{ mb: 2 }}>
+              <DataTable
+                columns={[
+                  { key: "salesOrderNumber", header: "SO#", render: (r) => (
+                    <Typography sx={{ color: "#2563eb", cursor: "pointer", fontSize: 13, fontWeight: 600 }} onClick={() => navigate(`/sales-orders/${getId(r)}`)}>
+                      {r.salesOrderNumber || "—"}
+                    </Typography>
+                  )},
+                  { key: "orderDate", header: "Date", render: (r) => dateText(r.orderDate) },
+                  { key: "referenceNumber", header: "Reference", render: (r) => r.referenceNumber || "—" },
+                  { key: "totalAmount", header: "Amount", align: "right", render: (r) => money(r.totalAmount) },
+                  { key: "status", header: "Status", render: (r) => {
+                    const s = r.status === "CONFIRMED" ? "ISSUED" : (r.status || "DRAFT");
+                    const color = s === "ISSUED" ? "#2563eb" : s === "CLOSED" ? "#16a34a" : s === "CANCELLED" ? "#dc2626" : "#64748b";
+                    return <Typography sx={{ fontSize: 12, fontWeight: 700, color }}>{s}</Typography>;
+                  }},
+                  { key: "action", header: "", render: (r) => (
+                    <Typography sx={{ color: "#2563eb", cursor: "pointer", fontSize: 12 }} onClick={() => navigate(`/sales-orders/${getId(r)}`)}>View</Typography>
+                  )},
+                ]}
+                rows={orders}
+                emptyText="No sales orders found"
+                minWidth={750}
+                stickyHeader
+              />
+            </Card>
+
+            {/* Invoices */}
+            <Card title="Invoices" bodySx={{ p: 0 }} sx={{ mb: 2 }}>
+              <DataTable
+                columns={[
+                  { key: "invoiceNumber", header: "Invoice#", render: (r) => (
+                    <Typography sx={{ color: "#2563eb", cursor: "pointer", fontSize: 13, fontWeight: 600 }} onClick={() => navigate(`/invoices/${getId(r)}`)}>
+                      {r.invoiceNumber || "—"}
+                    </Typography>
+                  )},
+                  { key: "invoiceDate", header: "Date", render: (r) => dateText(r.invoiceDate) },
+                  { key: "salesOrderNumber", header: "Sales Order", render: (r) => r.salesOrderNumber || "—" },
+                  { key: "totalAmount", header: "Amount", align: "right", render: (r) => money(r.totalAmount) },
+                  { key: "balanceAmount", header: "Balance Due", align: "right", render: (r) => (
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: Number(r.balanceAmount ?? r.totalAmount) > 0 ? "#d97706" : "#16a34a" }}>
+                      {money(r.balanceAmount ?? r.totalAmount)}
+                    </Typography>
+                  )},
+                  { key: "status", header: "Status", render: (r) => {
+                    const color = r.status === "PAID" ? "#16a34a" : r.status === "SENT" ? "#2563eb" : r.status === "PARTIALLY_PAID" ? "#d97706" : "#64748b";
+                    return <Typography sx={{ fontSize: 12, fontWeight: 700, color }}>{r.status || "DRAFT"}</Typography>;
+                  }},
+                ]}
+                rows={invoices}
+                emptyText="No invoices found"
+                minWidth={800}
+                stickyHeader
+              />
+            </Card>
+
+            {/* Delivery Challans */}
+            {challans.length > 0 ? (
+              <Card title="Delivery Challans" bodySx={{ p: 0 }} sx={{ mb: 2 }}>
+                <DataTable
+                  columns={[
+                    { key: "challanNumber", header: "Challan#", render: (r) => r.challanNumber || r.deliveryChallanNumber || "—" },
+                    { key: "date", header: "Date", render: (r) => dateText(r.date || r.createdAt) },
+                    { key: "salesOrderNumber", header: "Sales Order#", render: (r) => r.salesOrderNumber || "—" },
+                    { key: "status", header: "Status", render: (r) => r.status || "GENERATED" },
+                  ]}
+                  rows={challans}
+                  emptyText="No delivery challans"
+                  minWidth={500}
+                  stickyHeader
+                />
+              </Card>
+            ) : null}
+
+            {/* Credit Transactions */}
+            {type === "customer" ? (
+              <>
+                {/* Credit source: bank deposits linked to this customer */}
+                <Card title={`Customer Credits (Bank Deposits) — Available: ${money(unusedCredits)}`} bodySx={{ p: 0 }} sx={{ mb: 2 }}>
+                  <DataTable
+                    columns={[
+                      { key: "transactionDate", header: "Date", render: (r) => dateText(r.transactionDate || r.createdAt) },
+                      { key: "description", header: "Description", render: (r) => r.description || r.partyName || r.linkedPartyName || "Bank Deposit" },
+                      { key: "referenceNumber", header: "Reference", render: (r) => r.referenceNumber || r.utr || "—" },
+                      { key: "deposit", header: "Credit Amount", align: "right", render: (r) => (
+                        <Typography sx={{ fontSize: 13, fontWeight: 600, color: "#16a34a" }}>{money(r.deposit)}</Typography>
+                      )},
+                    ]}
+                    rows={bankCreditTxns}
+                    emptyText="No bank deposits linked to this customer yet. Link bank statement transactions to see credits here."
+                    minWidth={650}
+                    stickyHeader
+                  />
+                </Card>
+
+                {/* Credit used: payments applied to invoices from credit */}
+                <Card title="Credit Applied to Invoices" bodySx={{ p: 0 }}>
+                  <DataTable
+                    columns={[
+                      { key: "paymentNumber", header: "Payment#", render: (r) => r.paymentNumber || "—" },
+                      { key: "paymentDate", header: "Date", render: (r) => dateText(r.paymentDate) },
+                      { key: "amountReceived", header: "Amount Applied", align: "right", render: (r) => (
+                        <Typography sx={{ fontSize: 13, fontWeight: 600, color: "#2563eb" }}>{money(r.amountReceived)}</Typography>
+                      )},
+                      { key: "referenceNumber", header: "Reference", render: (r) => r.referenceNumber || "—" },
+                      { key: "invoiceId", header: "Invoice", render: (r) => {
+                        const inv = r.invoiceId;
+                        const invId = typeof inv === "object" ? (inv?._id || inv?.id || "") : (inv || "");
+                        const invNo = typeof inv === "object" ? inv?.invoiceNumber : "";
+                        return invId ? (
+                          <Typography sx={{ color: "#2563eb", cursor: "pointer", fontSize: 13, fontWeight: 600 }} onClick={() => navigate(`/invoices/${invId}`)}>
+                            {invNo || "View Invoice"}
+                          </Typography>
+                        ) : "—";
+                      }},
+                    ]}
+                    rows={creditApplied}
+                    emptyText="No credits applied to invoices yet."
+                    minWidth={700}
+                    stickyHeader
+                  />
+                </Card>
+              </>
+            ) : (
+              <Card title={cfg.paymentTableTitle} bodySx={{ p: 0 }}>
+                <DataTable columns={txnColumns} rows={txns} emptyText="No payments made yet." minWidth={1000} stickyHeader />
+              </Card>
+            )}
+          </Box>
+        ) : null}
 
         {tab === 2 ? <Box sx={{ p: 2.5 }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography sx={{ fontSize: 18, fontWeight: 500 }}>Documents</Typography><Button icon={Upload} onClick={() => setDocModal(true)}>Upload Document</Button></Stack>{documents.length ? <Grid container spacing={1.5}>{documents.map((doc) => <Grid item xs={12} md={6} key={doc._id || doc.fileUrl || doc.title}><Paper variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}><Stack direction="row" spacing={1.2}><FileText size={20} /><Box sx={{ flex: 1 }}><Typography sx={{ fontSize: 14, fontWeight: 500 }}>{doc.title}</Typography><Typography sx={{ fontSize: 12, color: "#667085" }}>{doc.description || "-"}</Typography>{doc.fileUrl ? <Button variant="text" onClick={() => window.open(doc.fileUrl, "_blank")}>View File</Button> : null}</Box></Stack></Paper></Grid>)}</Grid> : <Card><Typography sx={{ fontSize: 13, color: "#667085" }}>No documents uploaded.</Typography></Card>}</Box> : null}
       </Box>

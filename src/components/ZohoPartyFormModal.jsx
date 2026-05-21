@@ -4,7 +4,6 @@ import {
   Checkbox,
   Divider,
   FormControlLabel,
-  Grid,
   MenuItem,
   Radio,
   RadioGroup,
@@ -14,7 +13,6 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import Button from "./Button";
@@ -74,6 +72,10 @@ const VENDOR_EMPTY = {
   state: "",
 };
 
+const ZOHO_LABEL_W = 180;
+const ZOHO_FIELD_W = 330;
+const ZOHO_INPUT_H = 34;
+
 function mergeInitial(type, value) {
   const base = type === "vendor" ? VENDOR_EMPTY : CUSTOMER_EMPTY;
   const nameKey = type === "vendor" ? "vendorName" : "customerName";
@@ -101,21 +103,34 @@ function mergeInitial(type, value) {
   };
 }
 
-function FieldLabel({ children, required = false }) {
+function FieldLabel({ children, required = false, showInfo = true }) {
   return (
-    <Stack direction="row" spacing={0.5} alignItems="center">
+    <Stack
+      direction="row"
+      spacing={0.5}
+      alignItems="center"
+      sx={{
+        width: ZOHO_LABEL_W,
+        minWidth: ZOHO_LABEL_W,
+        pt: 0.65,
+      }}
+    >
       <Typography
         sx={{
           fontSize: 13,
           color: required ? "#e11d48" : "#111827",
           fontWeight: 400,
+          lineHeight: "18px",
           whiteSpace: "nowrap",
         }}
       >
         {children}
         {required ? "*" : ""}
       </Typography>
-      <InfoOutlinedIcon sx={{ fontSize: 14, color: "#64748b" }} />
+
+      {showInfo ? (
+        <InfoOutlinedIcon sx={{ fontSize: 14, color: "#64748b" }} />
+      ) : null}
     </Stack>
   );
 }
@@ -130,10 +145,11 @@ function ZohoInput({
   multiline = false,
   minRows = 1,
   startIcon = null,
+  width = ZOHO_FIELD_W,
+  disabled = false,
 }) {
   return (
     <TextField
-      fullWidth
       size="small"
       type={type}
       select={select}
@@ -141,12 +157,20 @@ function ZohoInput({
       placeholder={placeholder}
       multiline={multiline}
       minRows={minRows}
-      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      onChange={(e) => onChange?.(e.target.value)}
       InputProps={
         startIcon
           ? {
               startAdornment: (
-                <Box sx={{ mr: 0.75, display: "flex", color: "#6b7280" }}>
+                <Box
+                  sx={{
+                    mr: 0.75,
+                    display: "flex",
+                    color: "#6b7280",
+                    alignItems: "center",
+                  }}
+                >
                   {startIcon}
                 </Box>
               ),
@@ -154,15 +178,25 @@ function ZohoInput({
           : undefined
       }
       sx={{
+        width: {
+          xs: "100%",
+          sm: width,
+        },
+        maxWidth: "100%",
         "& .MuiOutlinedInput-root": {
-          height: multiline ? "auto" : 34,
+          minHeight: multiline ? "auto" : ZOHO_INPUT_H,
+          height: multiline ? "auto" : ZOHO_INPUT_H,
           borderRadius: "5px",
-          bgcolor: "#fff",
+          bgcolor: disabled ? "#f8fafc" : "#fff",
           fontSize: 13,
         },
         "& .MuiInputBase-input": {
           fontSize: "13px !important",
           py: multiline ? "8px !important" : "7px !important",
+        },
+        "& .MuiSelect-select": {
+          py: "7px !important",
+          fontSize: "13px !important",
         },
       }}
     >
@@ -171,16 +205,56 @@ function ZohoInput({
   );
 }
 
-function FormRow({ label, required = false, children }) {
+function FormRow({ label, required = false, children, showInfo = true }) {
   return (
-    <Grid container spacing={1.5} alignItems="center">
-      <Grid item xs={12} md={2.1}>
-        <FieldLabel required={required}>{label}</FieldLabel>
-      </Grid>
-      <Grid item xs={12} md={9.9}>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 0,
+        minHeight: 40,
+        width: "100%",
+        "@media (max-width: 700px)": {
+          display: "block",
+        },
+      }}
+    >
+      <FieldLabel required={required} showInfo={showInfo}>
+        {label}
+      </FieldLabel>
+
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          "@media (max-width: 700px)": {
+            mt: 0.75,
+          },
+        }}
+      >
         {children}
-      </Grid>
-    </Grid>
+      </Box>
+    </Box>
+  );
+}
+
+function InlineFields({ children, width = 690 }) {
+  return (
+    <Box
+      sx={{
+        width: {
+          xs: "100%",
+          md: width,
+        },
+        maxWidth: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 1.25,
+        flexWrap: "wrap",
+      }}
+    >
+      {children}
+    </Box>
   );
 }
 
@@ -222,7 +296,7 @@ export default function ZohoPartyFormModal({
         ? "Prefill vendor details from the GST portal using the Vendor's GSTIN."
         : "Prefill customer details from the GST portal using the Customer's GSTIN.",
     }),
-    [isVendor, mode],
+    [isVendor, mode]
   );
 
   const [form, setForm] = useState(() => mergeInitial(type, value));
@@ -239,9 +313,13 @@ export default function ZohoPartyFormModal({
       const next = { ...prev, [key]: val };
 
       if (key === "firstName" || key === "lastName") {
-        const contact = [key === "firstName" ? val : next.firstName, key === "lastName" ? val : next.lastName]
+        const contact = [
+          key === "firstName" ? val : next.firstName,
+          key === "lastName" ? val : next.lastName,
+        ]
           .filter(Boolean)
           .join(" ");
+
         next.contactPerson = contact;
       }
 
@@ -259,11 +337,11 @@ export default function ZohoPartyFormModal({
   };
 
   const handleSave = () => {
-    const displayName = String(form.displayName || form[config.nameKey] || "").trim();
+    const displayName = String(
+      form.displayName || form[config.nameKey] || ""
+    ).trim();
 
-    if (!displayName) {
-      return;
-    }
+    if (!displayName) return;
 
     const payload = {
       ...form,
@@ -291,56 +369,74 @@ export default function ZohoPartyFormModal({
         <Stack
           direction="row"
           spacing={1}
-          justifyContent="flex-end"
+          justifyContent="flex-start"
           sx={{ width: "100%" }}
         >
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
           <Button
             variant="primary"
             onClick={handleSave}
-            disabled={saving || !String(form.displayName || form[config.nameKey] || "").trim()}
+            disabled={
+              saving ||
+              !String(form.displayName || form[config.nameKey] || "").trim()
+            }
           >
             {saving ? "Saving..." : "Save"}
+          </Button>
+
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
           </Button>
         </Stack>
       }
     >
-      <Box
-        sx={{
-          px: { xs: 0, sm: 0.25 },
-          pb: 0.5,
-        }}
-      >
+      <Box sx={{ px: 0, pb: 0.5 }}>
         <Stack spacing={2.4}>
-          {/* GST Prefill strip */}
           <Box
             sx={{
               bgcolor: "#eaf4ff",
               color: "#0f172a",
               px: 1.5,
               py: 1,
-              borderRadius: "6px",
+              borderRadius: "0px",
               fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              minHeight: 40,
             }}
           >
             {config.gstText}{" "}
-            <Box component="span" sx={{ color: "#1f6ff2", cursor: "pointer" }}>
+            <Box
+              component="span"
+              sx={{
+                color: "#1f6ff2",
+                cursor: "pointer",
+                ml: 0.5,
+                fontWeight: 500,
+              }}
+            >
               Prefill &gt;
             </Box>
           </Box>
 
-          {/* Main fields */}
-          <Stack spacing={1.6}>
+          <Stack spacing={1.55} sx={{ width: "100%" }}>
             <FormRow label={`${isVendor ? "Vendor" : "Customer"} Type`}>
               <RadioGroup
                 row
                 value={form[config.typeKey]}
                 onChange={(e) => patch(config.typeKey, e.target.value)}
                 sx={{
-                  "& .MuiFormControlLabel-label": { fontSize: 13 },
-                  "& .MuiRadio-root": { p: 0.5 },
+                  minHeight: ZOHO_INPUT_H,
+                  alignItems: "center",
+                  "& .MuiFormControlLabel-root": {
+                    mr: 1.4,
+                  },
+                  "& .MuiFormControlLabel-label": {
+                    fontSize: 13,
+                    color: "#111827",
+                  },
+                  "& .MuiRadio-root": {
+                    p: 0.45,
+                  },
                 }}
               >
                 <FormControlLabel
@@ -357,122 +453,100 @@ export default function ZohoPartyFormModal({
             </FormRow>
 
             <FormRow label="Primary Contact">
-              <Grid container spacing={1.25}>
-                <Grid item xs={12} md={2.1}>
-                  <ZohoInput
-                    select
-                    value={form.salutation}
-                    onChange={(v) => patch("salutation", v)}
-                    placeholder="Salutation"
-                  >
-                    <MenuItem value="">Salutation</MenuItem>
-                    <MenuItem value="Mr.">Mr.</MenuItem>
-                    <MenuItem value="Mrs.">Mrs.</MenuItem>
-                    <MenuItem value="Ms.">Ms.</MenuItem>
-                    <MenuItem value="Dr.">Dr.</MenuItem>
-                  </ZohoInput>
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <ZohoInput
-                    value={form.firstName}
-                    onChange={(v) => patch("firstName", v)}
-                    placeholder="First Name"
-                  />
-                </Grid>
-                <Grid item xs={12} md={3}>
-                  <ZohoInput
-                    value={form.lastName}
-                    onChange={(v) => patch("lastName", v)}
-                    placeholder="Last Name"
-                  />
-                </Grid>
-              </Grid>
+              <InlineFields>
+                <ZohoInput
+                  select
+                  width={140}
+                  value={form.salutation}
+                  onChange={(v) => patch("salutation", v)}
+                  placeholder="Salutation"
+                >
+                  <MenuItem value="">Salutation</MenuItem>
+                  <MenuItem value="Mr.">Mr.</MenuItem>
+                  <MenuItem value="Mrs.">Mrs.</MenuItem>
+                  <MenuItem value="Ms.">Ms.</MenuItem>
+                  <MenuItem value="Dr.">Dr.</MenuItem>
+                </ZohoInput>
+
+                <ZohoInput
+                  width={150}
+                  value={form.firstName}
+                  onChange={(v) => patch("firstName", v)}
+                  placeholder="First Name"
+                />
+
+                <ZohoInput
+                  width={150}
+                  value={form.lastName}
+                  onChange={(v) => patch("lastName", v)}
+                  placeholder="Last Name"
+                />
+              </InlineFields>
             </FormRow>
 
-            <FormRow label="Company Name">
-              <Grid container spacing={1.25}>
-                <Grid item xs={12} md={4.9}>
-                  <ZohoInput
-                    value={form.companyName}
-                    onChange={(v) => patch("companyName", v)}
-                  />
-                </Grid>
-              </Grid>
+            <FormRow label="Company Name" showInfo={false}>
+              <ZohoInput
+                value={form.companyName}
+                onChange={(v) => patch("companyName", v)}
+              />
             </FormRow>
 
             <FormRow label="Display Name" required>
-              <Grid container spacing={1.25}>
-                <Grid item xs={12} md={4.9}>
-                  <ZohoInput
-                    value={form.displayName}
-                    onChange={(v) => patch("displayName", v)}
-                    placeholder="Select or type to add"
-                    select={false}
-                  />
-                </Grid>
-              </Grid>
+              <ZohoInput
+                value={form.displayName}
+                onChange={(v) => patch("displayName", v)}
+                placeholder="Select or type to add"
+              />
             </FormRow>
 
             <FormRow label="Email Address">
-              <Grid container spacing={1.25}>
-                <Grid item xs={12} md={4.9}>
-                  <ZohoInput
-                    value={form.email}
-                    onChange={(v) => patch("email", v)}
-                    startIcon={<MailOutlineRoundedIcon sx={{ fontSize: 15 }} />}
-                  />
-                </Grid>
-              </Grid>
+              <ZohoInput
+                value={form.email}
+                onChange={(v) => patch("email", v)}
+                startIcon={<MailOutlineRoundedIcon sx={{ fontSize: 15 }} />}
+              />
             </FormRow>
 
             <FormRow label="Phone">
-              <Grid container spacing={1.25}>
-                <Grid item xs={4} md={1.05}>
-                  <ZohoInput select value="+91" onChange={() => {}}>
-                    <MenuItem value="+91">+91</MenuItem>
-                  </ZohoInput>
-                </Grid>
-                <Grid item xs={8} md={2.35}>
-                  <ZohoInput
-                    value={form.workPhone}
-                    onChange={(v) => patch("workPhone", v)}
-                    placeholder="Work Phone"
-                  />
-                </Grid>
-                <Grid item xs={4} md={1.05}>
-                  <ZohoInput select value="+91" onChange={() => {}}>
-                    <MenuItem value="+91">+91</MenuItem>
-                  </ZohoInput>
-                </Grid>
-                <Grid item xs={8} md={2.35}>
-                  <ZohoInput
-                    value={form.mobile}
-                    onChange={(v) => patch("mobile", v)}
-                    placeholder="Mobile"
-                  />
-                </Grid>
-              </Grid>
+              <InlineFields>
+                <ZohoInput select width={70} value="+91" onChange={() => {}}>
+                  <MenuItem value="+91">+91</MenuItem>
+                </ZohoInput>
+
+                <ZohoInput
+                  width={140}
+                  value={form.workPhone}
+                  onChange={(v) => patch("workPhone", v)}
+                  placeholder="Work Phone"
+                />
+
+                <ZohoInput select width={70} value="+91" onChange={() => {}}>
+                  <MenuItem value="+91">+91</MenuItem>
+                </ZohoInput>
+
+                <ZohoInput
+                  width={140}
+                  value={form.mobile}
+                  onChange={(v) => patch("mobile", v)}
+                  placeholder="Mobile"
+                />
+              </InlineFields>
             </FormRow>
 
             <FormRow label={`${isVendor ? "Vendor" : "Customer"} Language`}>
-              <Grid container spacing={1.25}>
-                <Grid item xs={12} md={4.9}>
-                  <ZohoInput
-                    select
-                    value={form[config.languageKey]}
-                    onChange={(v) => patch(config.languageKey, v)}
-                  >
-                    <MenuItem value="English">English</MenuItem>
-                    <MenuItem value="Hindi">Hindi</MenuItem>
-                    <MenuItem value="Marathi">Marathi</MenuItem>
-                  </ZohoInput>
-                </Grid>
-              </Grid>
+              <ZohoInput
+                select
+                value={form[config.languageKey]}
+                onChange={(v) => patch(config.languageKey, v)}
+              >
+                <MenuItem value="English">English</MenuItem>
+                <MenuItem value="Hindi">Hindi</MenuItem>
+                <MenuItem value="Marathi">Marathi</MenuItem>
+              </ZohoInput>
             </FormRow>
           </Stack>
 
-          {/* Tabs */}
-          <Box>
+          <Box sx={{ mt: 1 }}>
             <Tabs
               value={tab}
               onChange={(_, v) => setTab(v)}
@@ -481,75 +555,75 @@ export default function ZohoPartyFormModal({
               sx={{
                 borderBottom: "1px solid #dbe2ea",
                 minHeight: 38,
+                pl: 0,
+                "& .MuiTabs-flexContainer": {
+                  gap: 1.5,
+                },
                 "& .MuiTab-root": {
                   minHeight: "38px !important",
-                  px: 2,
+                  px: 1.4,
                   fontSize: "13px !important",
+                  textTransform: "none",
+                  color: "#111827",
+                },
+                "& .Mui-selected": {
+                  color: "#111827 !important",
+                  fontWeight: "600 !important",
+                },
+                "& .MuiTabs-indicator": {
+                  height: 2,
+                  bgcolor: "#4088ff",
                 },
               }}
             >
               <Tab label="Other Details" />
               <Tab label="Address" />
               <Tab label="Contact Persons" />
+              <Tab label="Custom Fields" />
+              <Tab label="Reporting Tags" />
               <Tab label="Remarks" />
             </Tabs>
 
             <TabPanel value={tab} index={0}>
-              <Stack spacing={1.6}>
+              <Stack spacing={1.55}>
                 <FormRow label="PAN">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={4.9}>
-                      <ZohoInput
-                        value={form.pan}
-                        onChange={(v) => patch("pan", v)}
-                      />
-                    </Grid>
-                  </Grid>
+                  <ZohoInput
+                    value={form.pan}
+                    onChange={(v) => patch("pan", v)}
+                  />
                 </FormRow>
 
-                <FormRow label="Currency">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={4.9}>
-                      <ZohoInput
-                        select
-                        value={form.currency}
-                        onChange={(v) => patch("currency", v)}
-                      >
-                        <MenuItem value="INR - Indian Rupee">
-                          INR - Indian Rupee
-                        </MenuItem>
-                      </ZohoInput>
-                    </Grid>
-                  </Grid>
+                <FormRow label="Currency" showInfo={false}>
+                  <ZohoInput
+                    select
+                    value={form.currency}
+                    onChange={(v) => patch("currency", v)}
+                  >
+                    <MenuItem value="INR - Indian Rupee">
+                      INR - Indian Rupee
+                    </MenuItem>
+                  </ZohoInput>
                 </FormRow>
 
                 <FormRow label={config.payableLabel}>
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={4.9}>
-                      <ZohoInput
-                        value={form[config.payableField]}
-                        onChange={(v) => patch(config.payableField, v)}
-                        placeholder="Select an account"
-                      />
-                    </Grid>
-                  </Grid>
+                  <ZohoInput
+                    value={form[config.payableField]}
+                    onChange={(v) => patch(config.payableField, v)}
+                    placeholder="Select an account"
+                  />
                 </FormRow>
 
-                <FormRow label="Payment Terms">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={4.9}>
-                      <ZohoInput
-                        select
-                        value={form.paymentTerms}
-                        onChange={(v) => patch("paymentTerms", v)}
-                      >
-                        <MenuItem value="Due on Receipt">Due on Receipt</MenuItem>
-                        <MenuItem value="Net 15">Net 15</MenuItem>
-                        <MenuItem value="Net 30">Net 30</MenuItem>
-                        <MenuItem value="Net 45">Net 45</MenuItem>
-                      </ZohoInput>
-                    </Grid>
-                  </Grid>
+                <FormRow label="Payment Terms" showInfo={false}>
+                  <ZohoInput
+                    select
+                    value={form.paymentTerms}
+                    onChange={(v) => patch("paymentTerms", v)}
+                  >
+                    <MenuItem value="Due on Receipt">Due on Receipt</MenuItem>
+                    <MenuItem value="Net 15">Net 15</MenuItem>
+                    <MenuItem value="Net 30">Net 30</MenuItem>
+                    <MenuItem value="Net 45">Net 45</MenuItem>
+                  </ZohoInput>
                 </FormRow>
 
                 <FormRow label="Enable Portal?">
@@ -557,12 +631,16 @@ export default function ZohoPartyFormModal({
                     control={
                       <Checkbox
                         checked={Boolean(form.enablePortal)}
-                        onChange={(e) => patch("enablePortal", e.target.checked)}
+                        onChange={(e) =>
+                          patch("enablePortal", e.target.checked)
+                        }
                         size="small"
                       />
                     }
                     label={config.portalText}
                     sx={{
+                      m: 0,
+                      minHeight: ZOHO_INPUT_H,
                       "& .MuiFormControlLabel-label": {
                         fontSize: 13,
                         color: "#111827",
@@ -574,100 +652,112 @@ export default function ZohoPartyFormModal({
             </TabPanel>
 
             <TabPanel value={tab} index={1}>
-              <Stack spacing={1.6}>
-                <FormRow label="Billing Address">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={6}>
-                      <ZohoInput
-                        multiline
-                        minRows={3}
-                        value={form.billingAddress || form.address}
-                        onChange={(v) => {
-                          patch("billingAddress", v);
-                          patch("address", v);
-                        }}
-                        placeholder="Billing Address"
-                      />
-                    </Grid>
-                  </Grid>
+              <Stack spacing={1.55}>
+                <FormRow label="Billing Address" showInfo={false}>
+                  <ZohoInput
+                    multiline
+                    minRows={3}
+                    width={500}
+                    value={form.billingAddress || form.address}
+                    onChange={(v) => {
+                      patch("billingAddress", v);
+                      patch("address", v);
+                    }}
+                    placeholder="Billing Address"
+                  />
                 </FormRow>
 
-                <FormRow label="Shipping Address">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={6}>
-                      <ZohoInput
-                        multiline
-                        minRows={3}
-                        value={form.shippingAddress}
-                        onChange={(v) => patch("shippingAddress", v)}
-                        placeholder="Shipping Address"
-                      />
-                    </Grid>
-                  </Grid>
+                <FormRow label="Shipping Address" showInfo={false}>
+                  <ZohoInput
+                    multiline
+                    minRows={3}
+                    width={500}
+                    value={form.shippingAddress}
+                    onChange={(v) => patch("shippingAddress", v)}
+                    placeholder="Shipping Address"
+                  />
                 </FormRow>
 
-                <FormRow label="City / State">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={3}>
-                      <ZohoInput
-                        value={form.city}
-                        onChange={(v) => patch("city", v)}
-                        placeholder="City"
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={3}>
-                      <ZohoInput
-                        value={form.state}
-                        onChange={(v) => patch("state", v)}
-                        placeholder="State"
-                      />
-                    </Grid>
-                  </Grid>
+                <FormRow label="City / State" showInfo={false}>
+                  <InlineFields>
+                    <ZohoInput
+                      width={160}
+                      value={form.city}
+                      onChange={(v) => patch("city", v)}
+                      placeholder="City"
+                    />
+
+                    <ZohoInput
+                      width={160}
+                      value={form.state}
+                      onChange={(v) => patch("state", v)}
+                      placeholder="State"
+                    />
+                  </InlineFields>
                 </FormRow>
               </Stack>
             </TabPanel>
 
             <TabPanel value={tab} index={2}>
-              <Stack spacing={1.6}>
-                <FormRow label="Contact Person">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={4.9}>
-                      <ZohoInput
-                        value={form.contactPerson}
-                        onChange={(v) => patch("contactPerson", v)}
-                        placeholder="Contact person name"
-                      />
-                    </Grid>
-                  </Grid>
+              <Stack spacing={1.55}>
+                <FormRow label="Contact Person" showInfo={false}>
+                  <ZohoInput
+                    value={form.contactPerson}
+                    onChange={(v) => patch("contactPerson", v)}
+                    placeholder="Contact person name"
+                  />
                 </FormRow>
 
-                <FormRow label="GST Number">
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={4.9}>
-                      <ZohoInput
-                        value={form.gstNumber}
-                        onChange={(v) => patch("gstNumber", v)}
-                        placeholder="GST Number"
-                      />
-                    </Grid>
-                  </Grid>
+                <FormRow label="GST Number" showInfo={false}>
+                  <ZohoInput
+                    value={form.gstNumber}
+                    onChange={(v) => patch("gstNumber", v)}
+                    placeholder="GST Number"
+                  />
                 </FormRow>
               </Stack>
             </TabPanel>
 
             <TabPanel value={tab} index={3}>
-              <FormRow label="Remarks">
-                <Grid container spacing={1.25}>
-                  <Grid item xs={12} md={7}>
-                    <ZohoInput
-                      multiline
-                      minRows={4}
-                      value={form.remarks}
-                      onChange={(v) => patch("remarks", v)}
-                      placeholder="Add remarks"
-                    />
-                  </Grid>
-                </Grid>
+              <Box
+                sx={{
+                  pl: `${ZOHO_LABEL_W}px`,
+                  "@media (max-width: 700px)": {
+                    pl: 0,
+                  },
+                }}
+              >
+                <Typography sx={{ fontSize: 13, color: "#667085" }}>
+                  No custom fields added.
+                </Typography>
+              </Box>
+            </TabPanel>
+
+            <TabPanel value={tab} index={4}>
+              <Box
+                sx={{
+                  pl: `${ZOHO_LABEL_W}px`,
+                  "@media (max-width: 700px)": {
+                    pl: 0,
+                  },
+                }}
+              >
+                <Typography sx={{ fontSize: 13, color: "#667085" }}>
+                  No reporting tags added.
+                </Typography>
+              </Box>
+            </TabPanel>
+
+            <TabPanel value={tab} index={5}>
+              <FormRow label="Remarks" showInfo={false}>
+                <ZohoInput
+                  multiline
+                  minRows={4}
+                  width={500}
+                  value={form.remarks}
+                  onChange={(v) => patch("remarks", v)}
+                  placeholder="Add remarks"
+                />
               </FormRow>
             </TabPanel>
           </Box>
